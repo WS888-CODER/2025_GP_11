@@ -26,7 +26,7 @@ Based on the system architecture and APIs described in the Sprint 0 report, Jade
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/rawanalshammari3/2025_GP_11.git](https://github.com/WS888-CODER/2025_GP_11.git
+git clone https://github.com/WS888-CODER/2025_GP_11.git
 ```
 2. Navigate into the project folder:
  ```bash
