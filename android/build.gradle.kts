@@ -22,4 +22,6 @@ subprojects {
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
-apply(plugin = "com.google.gms.google-services")
+dependencies {
+    classpath("com.google.gms:google-services:4.4.0") // أو أحدث نسخة متاحة
+}
