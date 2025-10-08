@@ -1,27 +1,50 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/* ========================== FIRESTORE CONSTANTS ========================== */
+
+const kJobsCollection = 'Jobs';
+
+class JobFields {
+  static const jobId = 'JobID';
+  static const title = 'JobTitle';
+  static const position = 'Position';
+  static const keywords = 'JobKeywords';
+  static const startDate = 'StartDate';
+  static const endDate = 'EndDate';
+  static const description = 'JobDescription';
+  static const status = 'JobStatus';
+  static const requirements = 'Requirements';
+  static const requirementsAlt = 'Requirments';
+  static const specialty = 'Specialty';
+  static const userId = 'UserID';
+  static const company = 'Company';
+  static const applyUrl = 'ApplyURL';
+}
+
+/* ========================== MODEL ========================== */
+
 class Job {
-  final String id; // Firestore doc id
-  final String jobId; // from JobID
-  final String title; // from JobTitle
-  final String location; // from Position
-  final List<String> majors; // from JobKeywords
-  final DateTime postedAt; // from StartDate
-  final DateTime? endDate; // from EndDate
-  final String description; // from JobDescription
-  final String status; // from JobStatus
-  final List<String> requirements; // from Requirements
-  final String specialty; // from Specialty
-  final String userId; // from UserID
-  final String? applyUrl; // not in DB now -> null or add ApplyURL
+  final String id;
+  final String jobId;
+  final String title;
+  final String position; // Position
+  final List<String> keywords;
+  final DateTime postedAt;
+  final DateTime? endDate;
+  final String description;
+  final String status;
+  final List<String> requirements; // Requirements/Requirments
+  final String specialty;
+  final String userId;
+  final String? applyUrl; // ApplyURL
 
   const Job({
     required this.id,
     required this.jobId,
     required this.title,
-    required this.location,
-    required this.majors,
+    required this.position,
+    required this.keywords,
     required this.postedAt,
     this.endDate,
     required this.description,
@@ -32,7 +55,7 @@ class Job {
     this.applyUrl,
   });
 
-  factory Job.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+  factory Job.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data() ?? {};
 
     DateTime? asDate(dynamic v) =>
@@ -41,54 +64,45 @@ class Job {
     List<String> asStringList(dynamic v) =>
         v is List ? v.map((e) => e.toString()).toList() : <String>[];
 
+    final req = d[JobFields.requirements] ?? d[JobFields.requirementsAlt];
+
     return Job(
       id: doc.id,
-      jobId: (d['JobID'] ?? '').toString(),
-      title: (d['JobTitle'] ?? '').toString(),
-      location: (d['Position'] ?? '').toString(),
-      majors: asStringList(d['JobKeywords']),
+      jobId: (d[JobFields.jobId] ?? '').toString(),
+      title: (d[JobFields.title] ?? '').toString(),
+      position: (d[JobFields.position] ?? '').toString(),
+      keywords: asStringList(d[JobFields.keywords]),
       postedAt:
-          asDate(d['StartDate']) ?? DateTime.fromMillisecondsSinceEpoch(0),
-      endDate: asDate(d['EndDate']),
-      description: (d['JobDescription'] ?? '').toString(),
-      status: (d['JobStatus'] ?? '').toString(),
-      requirements: asStringList(d['Requirements']),
-      specialty: (d['Specialty'] ?? '').toString(),
-      userId: (d['UserID'] ?? '').toString(),
-      applyUrl: d['ApplyURL']?.toString(), // optional
+          asDate(d[JobFields.startDate]) ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      endDate: asDate(d[JobFields.endDate]),
+      description: (d[JobFields.description] ?? '').toString(),
+      status: (d[JobFields.status] ?? '').toString(),
+      requirements: asStringList(req),
+      specialty: (d[JobFields.specialty] ?? '').toString(),
+      userId: (d[JobFields.userId] ?? '').toString(),
+      applyUrl: (d[JobFields.applyUrl] as String?)?.toString(),
     );
   }
 }
 
-class UserProfile {
-  final String? cvUrl;
-  final String? major;
-  final bool hasMinimumInfo;
-  final Set<String> savedJobIds;
+/* ========================== DATA STREAM ========================== */
 
-  UserProfile({
-    this.cvUrl,
-    this.major,
-    this.hasMinimumInfo = false,
-    Set<String>? savedJobIds,
-  }) : savedJobIds = savedJobIds ?? {};
+Stream<List<Job>> _jobsStream() {
+  return FirebaseFirestore.instance
+      .collection(kJobsCollection)
+      .orderBy(JobFields.startDate, descending: true)
+      .snapshots()
+      .map((qs) => qs.docs.map((d) => Job.fromDoc(d)).toList());
 }
 
-Future<List<Job>> _fetchJobs() async {
-  final qs = await FirebaseFirestore.instance
-      .collection('Jobs')
-      .orderBy('StartDate', descending: true)
-      .get();
-
-  return qs.docs.map((d) => Job.fromFirestore(d)).toList();
-}
+/* ========================== UI ========================== */
 
 enum SortOrder { newestFirst, oldestFirst }
 
 class JobsPage extends StatefulWidget {
   final UserProfile profile;
-  final List<String> allMajors; // first item should be "All"
-
+  final List<String> allMajors; // first item must be "All"
   const JobsPage({super.key, required this.profile, required this.allMajors});
 
   @override
@@ -96,50 +110,49 @@ class JobsPage extends StatefulWidget {
 }
 
 class _JobsPageState extends State<JobsPage> {
-  // UI state
   String _search = '';
   String _selectedMajor = 'All';
   SortOrder _sort = SortOrder.newestFirst;
   bool _forYou = false;
 
-  late final Future<List<Job>> _jobsFuture = _fetchJobs();
-
-  // helpers
   String _fmtDate(DateTime d) =>
       '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
+
+  bool _matchesMajor(Job j, String major) {
+    final m = major.toLowerCase().trim();
+    return j.specialty.toLowerCase() == m ||
+        j.keywords.any((k) => k.toLowerCase() == m);
+  }
 
   List<Job> _applyFilters(List<Job> jobs) {
     Iterable<Job> res = jobs;
 
-    // search
     if (_search.trim().isNotEmpty) {
       final q = _search.toLowerCase();
       res = res.where(
         (j) =>
             j.title.toLowerCase().contains(q) ||
-            j.location.toLowerCase().contains(q) ||
-            j.majors.any((m) => m.toLowerCase().contains(q)),
+            j.position.toLowerCase().contains(q) ||
+            j.specialty.toLowerCase().contains(q) ||
+            j.keywords.any((k) => k.toLowerCase().contains(q)),
       );
     }
 
-    // major
     if (_selectedMajor != 'All') {
-      res = res.where((j) => j.majors.contains(_selectedMajor));
+      res = res.where((j) => _matchesMajor(j, _selectedMajor));
     }
 
-    // For You
     if (_forYou) {
       if (widget.profile.cvUrl == null) {
         res = const <Job>[];
       } else {
         final userMajor = widget.profile.major;
         if (userMajor != null && userMajor.isNotEmpty) {
-          res = res.where((j) => j.majors.contains(userMajor));
+          res = res.where((j) => _matchesMajor(j, userMajor));
         }
       }
     }
 
-    // sort
     final list = res.toList();
     list.sort(
       (a, b) => _sort == SortOrder.newestFirst
@@ -164,7 +177,6 @@ class _JobsPageState extends State<JobsPage> {
         ).showSnackBar(const SnackBar(content: Text('Saved for later')));
       }
     });
-    // TODO: persist saved jobs in Firestore under user document if needed
   }
 
   void _onApply(Job job) {
@@ -184,11 +196,6 @@ class _JobsPageState extends State<JobsPage> {
             FilledButton(
               onPressed: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Profile page opened (placeholder)'),
-                  ),
-                );
               },
               child: const Text('Go to Profile'),
             ),
@@ -197,18 +204,11 @@ class _JobsPageState extends State<JobsPage> {
       );
       return;
     }
-
-    if (job.applyUrl != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Opening application link: ${job.applyUrl}')),
-      );
-      // TODO: launchUrl(job.applyUrl!)
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => JobDetailsPage(job: job)),
-      );
-    }
+    // Next step will handle creating an Application
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => JobDetailsPage(job: job)),
+    );
   }
 
   void _maybeShowCvBanner() {
@@ -229,7 +229,6 @@ class _JobsPageState extends State<JobsPage> {
             TextButton(
               onPressed: () {
                 ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
-                // TODO: navigate to CV upload page
               },
               child: const Text('Upload CV'),
             ),
@@ -254,7 +253,7 @@ class _JobsPageState extends State<JobsPage> {
             padding: const EdgeInsets.all(12),
             child: TextField(
               decoration: InputDecoration(
-                hintText: 'Search job title or company...',
+                hintText: 'Search company, title, position or keyword…',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -267,7 +266,7 @@ class _JobsPageState extends State<JobsPage> {
       ),
       body: Column(
         children: [
-          // Filters
+          // Filters row
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Wrap(
@@ -305,13 +304,12 @@ class _JobsPageState extends State<JobsPage> {
               ],
             ),
           ),
-
           const Divider(height: 1),
 
-          // Data loader + list
+          // Live list
           Expanded(
-            child: FutureBuilder<List<Job>>(
-              future: _jobsFuture,
+            child: StreamBuilder<List<Job>>(
+              stream: _jobsStream(),
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -320,15 +318,13 @@ class _JobsPageState extends State<JobsPage> {
                   return Center(child: Text('Error: ${snap.error}'));
                 }
 
-                final jobs = snap.data ?? const <Job>[];
-                final filtered = _applyFilters(jobs);
-
-                if (filtered.isEmpty) {
+                final jobs = _applyFilters(snap.data ?? const <Job>[]);
+                if (jobs.isEmpty) {
                   return Center(
                     child: Text(
                       _forYou && widget.profile.cvUrl == null
                           ? 'Upload your CV to see personalized jobs.'
-                          : 'No matching jobs.',
+                          : 'No jobs match your filters.',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   );
@@ -336,42 +332,136 @@ class _JobsPageState extends State<JobsPage> {
 
                 return ListView.separated(
                   padding: const EdgeInsets.all(12),
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemCount: jobs.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, i) {
-                    final job = filtered[i];
-                    final saved = widget.profile.savedJobIds.contains(job.id);
+                    final j = jobs[i];
+                    final saved = widget.profile.savedJobIds.contains(j.id);
+                    final isClosed =
+                        (j.endDate != null &&
+                            j.endDate!.isBefore(DateTime.now())) ||
+                        j.status.toLowerCase() == 'closed';
+
                     return Card(
+                      elevation: 0.5,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: ListTile(
-                        title: Text(
-                          job.title,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          '${job.location}\nPosted: ${_fmtDate(job.postedAt)}',
-                        ),
-                        trailing: Wrap(
-                          spacing: 8,
-                          children: [
-                            IconButton(
-                              tooltip: saved
-                                  ? 'Remove from saved'
-                                  : 'Save for later',
-                              icon: Icon(
-                                saved ? Icons.favorite : Icons.favorite_border,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => _onApply(j),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Top row: avatar + title + company/position
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          j.title,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'Posted: ${_fmtDate(j.postedAt)}',
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.bodySmall,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    tooltip: saved
+                                        ? 'Remove from saved'
+                                        : 'Save for later',
+                                    icon: Icon(
+                                      saved
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
+                                    ),
+                                    onPressed: () => _toggleSave(j),
+                                  ),
+                                ],
                               ),
-                              onPressed: () => _toggleSave(job),
-                            ),
-                            FilledButton(
-                              onPressed: () => _onApply(job),
-                              child: const Text('Apply'),
-                            ),
-                          ],
+
+                              const SizedBox(height: 10),
+
+                              // Keywords chips (max 3)
+                              if (j.keywords.isNotEmpty)
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: -8,
+                                  children: j.keywords.take(3).map((k) {
+                                    return Chip(
+                                      label: Text(k),
+                                      visualDensity: VisualDensity.compact,
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    );
+                                  }).toList(),
+                                ),
+
+                              const SizedBox(height: 10),
+
+                              // Bottom row: specialty + status + apply
+                              Row(
+                                children: [
+                                  if (j.specialty.isNotEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary.withOpacity(.08),
+                                      ),
+                                      child: Text(
+                                        j.specialty,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  const Spacer(),
+                                  if (isClosed)
+                                    const Text(
+                                      'Closed',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    )
+                                  else
+                                    FilledButton(
+                                      onPressed: () => _onApply(j),
+                                      child: const Text('Apply'),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                        onTap: () => _onApply(job),
                       ),
                     );
                   },
@@ -385,23 +475,184 @@ class _JobsPageState extends State<JobsPage> {
   }
 }
 
-/* ========================== JOB DETAILS PAGE ========================== */
+/* ========================== PROFILE (for passing) ========================== */
+
+class UserProfile {
+  final String? cvUrl;
+  final String? major;
+  final bool hasMinimumInfo;
+  final Set<String> savedJobIds;
+  UserProfile({
+    this.cvUrl,
+    this.major,
+    this.hasMinimumInfo = false,
+    Set<String>? savedJobIds,
+  }) : savedJobIds = savedJobIds ?? {};
+}
+
+/* ========================== DETAILS PAGE ========================== */
 
 class JobDetailsPage extends StatelessWidget {
   final Job job;
   const JobDetailsPage({super.key, required this.job});
 
+  String _fmtDate(DateTime d) =>
+      '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
+
   @override
   Widget build(BuildContext context) {
+    final isClosed =
+        (job.endDate != null && job.endDate!.isBefore(DateTime.now())) ||
+        job.status.toLowerCase() == 'closed';
+
     return Scaffold(
       appBar: AppBar(title: Text(job.title)),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          'Location: ${job.location}\n\n'
-          'This is a placeholder for job details. Add full description, '
-          'requirements, and benefits here later.',
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.all(12),
+        child: FilledButton(
+          onPressed: isClosed ? null : () {},
+          child: const Text('Apply'),
         ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // Company info
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 2),
+                        Text(job.position),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Posted: ${_fmtDate(job.postedAt)}'
+                          '${job.endDate != null ? ' • Ends: ${_fmtDate(job.endDate!)}' : ''}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Job title + specialty
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    job.title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (job.specialty.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Chip(label: Text(job.specialty)),
+                  ],
+                  if (job.keywords.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      children: job.keywords
+                          .map((e) => Chip(label: Text(e)))
+                          .toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Description
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Job Description',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    job.description.isEmpty
+                        ? 'No description provided.'
+                        : job.description,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Requirements
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Requirements',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  if (job.requirements.isEmpty)
+                    const Text('No requirements listed.')
+                  else
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: job.requirements
+                          .map(
+                            (r) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('• '),
+                                  Expanded(child: Text(r)),
+                                ],
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
