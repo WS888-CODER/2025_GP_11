@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:gp_2025_11/config/theme.dart';
+import 'package:gp_2025_11/screens/home_page.dart';
 
 void main() {
-  runApp(MyApp());
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -11,16 +13,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'مشروع التخرج',
-      theme: ThemeData(primarySwatch: Colors.indigo),
-      home: Scaffold(
-        appBar: AppBar(title: Text('أهلاً يا W 👋')),
-        body: Center(
-          child: Text(
-            'مشروعك جاهز للتطوير 💻📱',
-            style: TextStyle(fontSize: 24),
-          ),
-        ),
-      ),
+      theme: AppTheme.lightTheme,
+      home: const HomePage(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
