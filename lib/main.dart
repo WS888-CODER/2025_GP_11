@@ -9,16 +9,14 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 2️⃣ Initialize Firebase BEFORE running the app
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // 3️⃣ Now run your app
-  runApp(const MyApp());
+  runApp(const Jadeer());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class Jadeer extends StatelessWidget {
+  const Jadeer({super.key});
 
   @override
   Widget build(BuildContext context) {
