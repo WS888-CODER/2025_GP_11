@@ -18,25 +18,6 @@ subprojects {
 
 subprojects {
     project.evaluationDependsOn(":app")
-    
-    // إضافة إعدادات Java الموحدة لكل المشاريع الفرعية
-    afterEvaluate {
-        if (extensions.findByType<com.android.build.gradle.BaseExtension>() != null) {
-            configure<com.android.build.gradle.BaseExtension> {
-                compileOptions {
-                    sourceCompatibility = JavaVersion.VERSION_17
-                    targetCompatibility = JavaVersion.VERSION_17
-                }
-            }
-        }
-        
-        // إعدادات Kotlin
-        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-            kotlinOptions {
-                jvmTarget = "17"
-            }
-        }
-    }
 }
 
 tasks.register<Delete>("clean") {

@@ -11,10 +11,14 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  firebase_core: ^3.6.0
-  firebase_auth: ^5.3.1
-  cloud_firestore: ^5.4.4
-  firebase_storage: ^12.3.4
+  
+  # Firebase - آخر إصدارات متوافقة مع Java 17
+  firebase_core: ^3.15.0
+  firebase_auth: ^5.7.0
+  cloud_firestore: ^5.6.0
+  firebase_storage: ^12.4.0
+  
+  # باقي المكتبات
   image_picker: ^1.1.2
   provider: ^6.1.2
   intl: ^0.19.0
