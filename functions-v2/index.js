@@ -22,7 +22,6 @@ const transporter = nodemailer.createTransport({
  * Cloud Function to send OTP to Admin
  */
 exports.sendAdminOtp = functions.https.onCall(async (data, context) => {
-  // ✅ DEBUG: طباعة كل شي للـ debugging (بدون JSON.stringify)
   console.log('📥 Full data received:', data);
   console.log('📥 Data type:', typeof data);
   console.log('📥 Data keys:', data ? Object.keys(data) : 'no data');
@@ -62,7 +61,7 @@ exports.sendAdminOtp = functions.https.onCall(async (data, context) => {
       );
     }
 
-    // Email content (الـ HTML الكامل الحلو 🎨)
+    // ✨ Email content - التصميم القديم الحلو
     const mailOptions = {
       from: `"Jadeer Admin" <${EMAIL_USER}>`,
       to: email,

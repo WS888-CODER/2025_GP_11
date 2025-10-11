@@ -65,14 +65,11 @@ class _LoginScreenState extends State<LoginScreen> {
       print('🔵 Email: $email');
       print('🔵 OTP: $otp');
 
-      // ✅ الطريقة الجديدة: استخدم dynamic بدلاً من String
       final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
-
       final callable = functions.httpsCallable('sendAdminOtp');
 
       print('🔵 Calling Cloud Function...');
 
-      // ✅ أرسل البيانات كـ Map<String, dynamic>
       final result = await callable.call({
         'email': email.trim(),
         'otp': otp.trim(),
@@ -80,26 +77,37 @@ class _LoginScreenState extends State<LoginScreen> {
 
       print('🔵 Cloud Function response: ${result.data}');
 
-      // حفظ OTP في Firestore
-      await _firestore.collection('AdminOTPs').doc(email).set({
-        'otp': otp,
-        'createdAt': FieldValue.serverTimestamp(),
-        'expiresAt': Timestamp.fromDate(
-          DateTime.now().add(Duration(minutes: 2)),
-        ),
-        'used': false,
-      });
+      // ✅ تحقق من الـ response
+      if (result.data != null && result.data['success'] == true) {
+        print('✅ Cloud Function returned success!');
 
-      print('✅ SUCCESS! OTP saved to Firestore and email sent!');
-      return true;
+        // ✅ حفظ OTP في AdminOTPs collection
+        await _firestore.collection('AdminOTPs').doc(email).set({
+          'OTP': otp,
+          'Email': email,
+          'CreatedAt': FieldValue.serverTimestamp(),
+          'ExpiresAt': Timestamp.fromDate(
+            DateTime.now().add(Duration(minutes: 2)),
+          ),
+          'Used': false,
+        });
+
+        print('✅ OTP saved to Firestore!');
+        return true;
+      } else {
+        print('⚠️ Unexpected response format: ${result.data}');
+        return false;
+      }
     } catch (e) {
       print('❌ FULL ERROR: $e');
       print('❌ Error type: ${e.runtimeType}');
+
       if (e is FirebaseFunctionsException) {
-        print('❌ Firebase Functions Error Code: ${e.code}');
-        print('❌ Firebase Functions Error Message: ${e.message}');
-        print('❌ Firebase Functions Error Details: ${e.details}');
+        print('❌ Code: ${e.code}');
+        print('❌ Message: ${e.message}');
+        print('❌ Details: ${e.details}');
       }
+
       return false;
     }
   }
@@ -157,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           await _auth.signOut();
           _showErrorDialog(
-              'Failed to send verification code. Check console for details.');
+              'Failed to send verification code. Please check your internet connection and try again.');
         }
         setState(() {
           _isLoading = false;

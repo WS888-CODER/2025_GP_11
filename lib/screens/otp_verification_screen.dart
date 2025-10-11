@@ -16,7 +16,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   bool _isLoading = false;
   bool _isResending = false;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'us-central1');
 
   // Timer للعد التنازلي
   Timer? _resendTimer;
@@ -106,14 +107,15 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       });
 
       if (result.data['success'] == true) {
-        // تحديث OTP في Firestore
+        // ✅ تحديث OTP في AdminOTPs collection
         await _firestore.collection('AdminOTPs').doc(email).set({
-          'otp': newOtp,
-          'createdAt': FieldValue.serverTimestamp(),
-          'expiresAt': Timestamp.fromDate(
+          'OTP': newOtp,
+          'Email': email,
+          'CreatedAt': FieldValue.serverTimestamp(),
+          'ExpiresAt': Timestamp.fromDate(
             DateTime.now().add(Duration(minutes: 2)),
           ),
-          'used': false,
+          'Used': false,
         });
 
         _showSuccessSnackBar('✅ تم إرسال رمز تحقق جديد');
@@ -145,7 +147,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     });
 
     try {
-      // نجيب الـ OTP من Firestore
+      // ✅ نجيب الـ OTP من AdminOTPs collection
       DocumentSnapshot otpDoc =
           await _firestore.collection('AdminOTPs').doc(email).get();
 
@@ -158,9 +160,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       }
 
       Map<String, dynamic> otpData = otpDoc.data() as Map<String, dynamic>;
-      String savedOTP = otpData['otp'];
-      Timestamp expiresAt = otpData['expiresAt'];
-      bool used = otpData['used'] ?? false;
+      String savedOTP = otpData['OTP'];
+      Timestamp expiresAt = otpData['ExpiresAt'];
+      bool used = otpData['Used'] ?? false;
 
       // نتحقق من أن الرمز لم يُستخدم من قبل
       if (used) {
@@ -175,6 +177,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       if (DateTime.now().isAfter(expiresAt.toDate())) {
         _showErrorDialog(
             'انتهت صلاحية الرمز. اضغط "إعادة الإرسال" للحصول على رمز جديد.');
+        // ✅ مسح OTP المنتهي
         await _firestore.collection('AdminOTPs').doc(email).delete();
         setState(() {
           _isLoading = false;
@@ -184,9 +187,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
       // نتحقق من الرمز
       if (_otpController.text.trim() == savedOTP) {
-        // الرمز صحيح - نحدث حالة used ونحفظ وقت تسجيل الدخول
+        // ✅ الرمز صحيح - نحدث حالة Used
         await _firestore.collection('AdminOTPs').doc(email).update({
-          'used': true,
+          'Used': true,
         });
 
         await _firestore.collection('Users').doc(userId).update({
@@ -233,7 +236,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           icon: Icon(Icons.arrow_back, color: Color(0xFF4A5FBC)),
           onPressed: () async {
             await FirebaseAuth.instance.signOut();
-            // حذف OTP عند الرجوع
+            // ✅ حذف OTP عند الرجوع
             await _firestore.collection('AdminOTPs').doc(email).delete();
             Navigator.pushReplacementNamed(context, '/login');
           },
