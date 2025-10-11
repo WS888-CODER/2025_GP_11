@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 // صفحات البنات: الموديل + التفاصيل + قائمة الوظائف + UserProfile
 import 'package:gp_2025_11/screens/all_jobs.dart'
-    show JobsPage, Job, JobDetailsPage, UserProfile;
+    show JobsPage, Job, JobDetailsPage;
 
 class UserHomePage extends StatefulWidget {
   const UserHomePage({super.key});
@@ -17,25 +17,6 @@ class _UserHomePageState extends State<UserHomePage> {
   // 0 = Reports, 1 = Home, 2 = Wishlist
   int _tab = 1;
   final _homeScroll = ScrollController();
-
-  // بروفايل بسيط للتنقل لصفحة البنات
-  final _profile = UserProfile(
-    cvUrl: null,
-    major: 'computer science',
-    hasMinimumInfo: true,
-    savedJobIds: {},
-  );
-
-  final _majors = const [
-    'All',
-    'computer science',
-    'information systems',
-    'cybersecurity',
-    'data science',
-    'software engineering',
-    'business',
-    'marketing',
-  ];
 
   @override
   void dispose() {
@@ -92,8 +73,7 @@ class _UserHomePageState extends State<UserHomePage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        JobsPage(profile: _profile, allMajors: _majors),
+                    builder: (_) => const JobsPage(),
                   ),
                 );
               },

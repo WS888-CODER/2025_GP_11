@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /* ========================== FIRESTORE CONSTANTS ========================== */
@@ -14,7 +15,7 @@ class JobFields {
   static const endDate = 'EndDate';
   static const description = 'JobDescription';
   static const status = 'JobStatus';
-  static const requirements = 'Requirments';
+  static const requirements = 'Requirements';
   static const specialty = 'Specialty';
   static const userId = 'UserID';
   static const company = 'Company';
@@ -27,7 +28,7 @@ class Job {
   final String id;
   final String jobId;
   final String title;
-  final String position; // Position
+  final String position;
   final List<String> keywords;
   final DateTime postedAt;
   final DateTime? endDate;
@@ -36,7 +37,7 @@ class Job {
   final List<String> requirements;
   final String specialty;
   final String userId;
-  final String? applyUrl; // ApplyURL
+  final String? applyUrl;
 
   const Job({
     required this.id,
@@ -63,20 +64,17 @@ class Job {
     List<String> asStringList(dynamic v) =>
         v is List ? v.map((e) => e.toString()).toList() : <String>[];
 
-    final req = d[JobFields.requirements] ?? d[JobFields.requirements];
-
     return Job(
       id: doc.id,
       jobId: (d[JobFields.jobId] ?? '').toString(),
       title: (d[JobFields.title] ?? '').toString(),
       position: (d[JobFields.position] ?? '').toString(),
       keywords: asStringList(d[JobFields.keywords]),
-      postedAt: asDate(d[JobFields.startDate]) ??
-          DateTime.fromMillisecondsSinceEpoch(0),
+      postedAt: asDate(d[JobFields.startDate])!,
       endDate: asDate(d[JobFields.endDate]),
       description: (d[JobFields.description] ?? '').toString(),
       status: (d[JobFields.status] ?? '').toString(),
-      requirements: asStringList(req),
+      requirements: asStringList(d[JobFields.requirements]),
       specialty: (d[JobFields.specialty] ?? '').toString(),
       userId: (d[JobFields.userId] ?? '').toString(),
       applyUrl: (d[JobFields.applyUrl] as String?)?.toString(),
@@ -100,12 +98,10 @@ enum SortOrder { newestFirst, oldestFirst }
 
 class JobsPage extends StatefulWidget {
   final UserProfile profile;
-  final List<String> allMajors;
 
   const JobsPage({
     super.key,
-    this.profile = const UserProfile(), // قيمة افتراضية
-    this.allMajors = const ['All'], // قيمة افتراضية
+    this.profile = const UserProfile(),
   });
 
   @override
@@ -118,13 +114,24 @@ class _JobsPageState extends State<JobsPage> {
   SortOrder _sort = SortOrder.newestFirst;
   bool _forYou = false;
 
+  late Set<String> _saved;
+  List<String> _majors = ['All'];
+
+  @override
+  void initState() {
+    super.initState();
+    _saved = {...widget.profile.savedJobIds};
+  }
+
   String _fmtDate(DateTime d) =>
       '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
 
   bool _matchesMajor(Job j, String major) {
     final m = major.toLowerCase().trim();
-    return j.specialty.toLowerCase() == m ||
-        j.keywords.any((k) => k.toLowerCase() == m);
+    final spec = j.specialty.toLowerCase().trim();
+    final inSpec = spec.contains(m);
+    final inTags = j.keywords.any((k) => k.toLowerCase().trim().contains(m));
+    return inSpec || inTags;
   }
 
   List<Job> _applyFilters(List<Job> jobs) {
@@ -166,52 +173,17 @@ class _JobsPageState extends State<JobsPage> {
   }
 
   void _toggleSave(Job job) {
-    final saved = widget.profile.savedJobIds;
     setState(() {
-      if (saved.contains(job.id)) {
-        saved.remove(job.id);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Removed from saved')));
+      if (_saved.contains(job.id)) {
+        _saved.remove(job.id);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Removed from saved')));
       } else {
-        saved.add(job.id);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Saved for later')));
+        _saved.add(job.id);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Saved for later')));
       }
     });
-  }
-
-  void _onApply(Job job) {
-    if (!widget.profile.hasMinimumInfo) {
-      showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Complete your profile'),
-          content: const Text(
-            'Please complete your account details before applying.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('Go to Profile'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-    // Next step will handle creating an Application
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => JobDetailsPage(job: job)),
-    );
   }
 
   void _maybeShowCvBanner() {
@@ -224,16 +196,16 @@ class _JobsPageState extends State<JobsPage> {
           actions: [
             TextButton(
               onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+              },
+              child: const Text('Upload CV'),
+            ),
+            TextButton(
+              onPressed: () {
                 setState(() => _forYou = false);
                 ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
               },
               child: const Text('Later'),
-            ),
-            TextButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
-              },
-              child: const Text('Upload CV'),
             ),
           ],
         ),
@@ -243,10 +215,28 @@ class _JobsPageState extends State<JobsPage> {
     }
   }
 
+  void _updateMajorsFrom(List<Job> jobs) {
+    final set = <String>{'All'};
+    for (final j in jobs) {
+      final s = j.specialty.trim();
+      if (s.isNotEmpty) set.add(s);
+    }
+    final next = set.toList();
+
+    if (!listEquals(next, _majors)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _majors = next;
+        if (!_majors.contains(_selectedMajor)) {
+          _selectedMajor = 'All';
+        }
+        setState(() {});
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    _maybeShowCvBanner();
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Jobs'),
@@ -269,7 +259,6 @@ class _JobsPageState extends State<JobsPage> {
       ),
       body: Column(
         children: [
-          // Filters row
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Wrap(
@@ -279,7 +268,7 @@ class _JobsPageState extends State<JobsPage> {
               children: [
                 DropdownButton<String>(
                   value: _selectedMajor,
-                  items: widget.allMajors
+                  items: _majors
                       .map((m) => DropdownMenuItem(value: m, child: Text(m)))
                       .toList(),
                   onChanged: (val) =>
@@ -302,14 +291,15 @@ class _JobsPageState extends State<JobsPage> {
                 FilterChip(
                   selected: _forYou,
                   label: const Text('For You'),
-                  onSelected: (v) => setState(() => _forYou = v),
+                  onSelected: (v) {
+                    setState(() => _forYou = v);
+                    _maybeShowCvBanner();
+                  },
                 ),
               ],
             ),
           ),
           const Divider(height: 1),
-
-          // Live list
           Expanded(
             child: StreamBuilder<List<Job>>(
               stream: _jobsStream(),
@@ -321,7 +311,10 @@ class _JobsPageState extends State<JobsPage> {
                   return Center(child: Text('Error: ${snap.error}'));
                 }
 
-                final jobs = _applyFilters(snap.data ?? const <Job>[]);
+                final data = snap.data ?? const <Job>[];
+                _updateMajorsFrom(data);
+
+                final jobs = _applyFilters(data);
                 if (jobs.isEmpty) {
                   return Center(
                     child: Text(
@@ -339,10 +332,7 @@ class _JobsPageState extends State<JobsPage> {
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, i) {
                     final j = jobs[i];
-                    final saved = widget.profile.savedJobIds.contains(j.id);
-                    final isClosed = (j.endDate != null &&
-                            j.endDate!.isBefore(DateTime.now())) ||
-                        j.status.toLowerCase() == 'closed';
+                    final saved = _saved.contains(j.id);
 
                     return Card(
                       elevation: 0.5,
@@ -351,13 +341,19 @@ class _JobsPageState extends State<JobsPage> {
                       ),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(16),
-                        onTap: () => _onApply(j),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => JobDetailsPage(job: j),
+                            ),
+                          );
+                        },
                         child: Padding(
                           padding: const EdgeInsets.all(14),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Top row: avatar + title + company/position
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -374,7 +370,6 @@ class _JobsPageState extends State<JobsPage> {
                                             fontWeight: FontWeight.w700,
                                           ),
                                         ),
-                                        const SizedBox(height: 2),
                                         const SizedBox(height: 2),
                                         Text(
                                           'Posted: ${_fmtDate(j.postedAt)}',
@@ -399,10 +394,7 @@ class _JobsPageState extends State<JobsPage> {
                                   ),
                                 ],
                               ),
-
                               const SizedBox(height: 10),
-
-                              // Keywords chips (max 3)
                               if (j.keywords.isNotEmpty)
                                 Wrap(
                                   spacing: 6,
@@ -416,10 +408,7 @@ class _JobsPageState extends State<JobsPage> {
                                     );
                                   }).toList(),
                                 ),
-
                               const SizedBox(height: 10),
-
-                              // Bottom row: specialty + status + apply
                               Row(
                                 children: [
                                   if (j.specialty.isNotEmpty)
@@ -446,18 +435,18 @@ class _JobsPageState extends State<JobsPage> {
                                       ),
                                     ),
                                   const Spacer(),
-                                  if (isClosed)
-                                    const Text(
-                                      'Closed',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    )
-                                  else
-                                    FilledButton(
-                                      onPressed: () => _onApply(j),
-                                      child: const Text('Apply'),
-                                    ),
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              JobDetailsPage(job: j),
+                                        ),
+                                      );
+                                    },
+                                    child: const Text('Details'),
+                                  ),
                                 ],
                               ),
                             ],
@@ -476,7 +465,7 @@ class _JobsPageState extends State<JobsPage> {
   }
 }
 
-/* ========================== PROFILE (for passing) ========================== */
+/* ========================== PROFILE ========================== */
 
 class UserProfile {
   final String? cvUrl;
@@ -503,23 +492,11 @@ class JobDetailsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isClosed =
-        (job.endDate != null && job.endDate!.isBefore(DateTime.now())) ||
-            job.status.toLowerCase() == 'closed';
-
     return Scaffold(
       appBar: AppBar(title: Text(job.title)),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.all(12),
-        child: FilledButton(
-          onPressed: isClosed ? null : () {},
-          child: const Text('Apply'),
-        ),
-      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Company info
           Card(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -533,7 +510,6 @@ class JobDetailsPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 2),
                         Text(job.position),
                         const SizedBox(height: 4),
                         Text(
@@ -548,10 +524,7 @@ class JobDetailsPage extends StatelessWidget {
               ),
             ),
           ),
-
           const SizedBox(height: 12),
-
-          // Job title + specialty
           Card(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -585,10 +558,7 @@ class JobDetailsPage extends StatelessWidget {
               ),
             ),
           ),
-
           const SizedBox(height: 12),
-
-          // Description
           Card(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -612,10 +582,7 @@ class JobDetailsPage extends StatelessWidget {
               ),
             ),
           ),
-
           const SizedBox(height: 12),
-
-          // Requirements
           Card(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),

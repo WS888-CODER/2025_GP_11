@@ -29,7 +29,7 @@ class Jadeer extends StatelessWidget {
     return MaterialApp(
       title: 'Jadeer',
       theme: AppTheme.lightTheme,
-      home: const JobsPage(),
+      home: StartScreen(),
       debugShowCheckedModeBanner: false,
       routes: {
         '/start': (context) => StartScreen(),
