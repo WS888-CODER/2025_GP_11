@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:gp_2025_11/screens/login_screen.dart';
+import 'package:gp_2025_11/screens/welcome_screen.dart';
 
 class StartScreen extends StatefulWidget {
   @override
@@ -104,7 +104,7 @@ class _StartScreenState extends State<StartScreen>
         context,
         PageRouteBuilder(
           pageBuilder: (context, animation, secondaryAnimation) =>
-              LoginScreen(),
+              WelcomeScreen(),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);
           },
@@ -158,7 +158,7 @@ class _StartScreenState extends State<StartScreen>
                                 children: [
                                   if (_showOutline)
                                     Image.asset(
-                                      'assets/images/j_outline.png',
+                                      'assets/images/logo.jpg',
                                       fit: BoxFit.contain,
                                     ),
                                   if (_showFilled)
@@ -166,7 +166,7 @@ class _StartScreenState extends State<StartScreen>
                                       opacity: _showFilled ? 1.0 : 0.0,
                                       duration: Duration(milliseconds: 600),
                                       child: Image.asset(
-                                        'assets/images/j_filled.png',
+                                        'assets/images/logo.jpg',
                                         fit: BoxFit.contain,
                                       ),
                                     ),
