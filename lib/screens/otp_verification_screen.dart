@@ -77,12 +77,32 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     );
   }
 
+  void _showSuccessDialog(String message, VoidCallback onOk) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text('Success'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              onOk();
+            },
+            child: Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _generateOTP() {
     Random random = Random();
     return (100000 + random.nextInt(900000)).toString();
   }
 
-  Future<void> _resendOTP(String email) async {
+  Future<void> _resendOTP(String email, String userType) async {
     if (_resendCountdown > 0) {
       _showErrorDialog(
           'The current OTP is still valid. Please wait $_resendCountdown seconds.');
@@ -96,16 +116,22 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     try {
       String newOtp = _generateOTP();
 
-      final callable = _functions.httpsCallable('sendAdminOtp');
+      // Determine which function to call based on userType
+      String functionName =
+          userType == 'Admin' ? 'sendAdminOtp' : 'sendSignupOtp';
+      final callable = _functions.httpsCallable(functionName);
+
       final result = await callable.call({
         'email': email,
         'otp': newOtp,
+        if (userType != 'Admin') 'userType': userType,
       });
 
       if (result.data['success'] == true) {
         await _firestore.collection('AdminOTPs').doc(email).set({
           'OTP': newOtp,
           'Email': email,
+          'UserType': userType,
           'CreatedAt': FieldValue.serverTimestamp(),
           'ExpiresAt': Timestamp.fromDate(
             DateTime.now().add(Duration(minutes: 2)),
@@ -126,7 +152,34 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     }
   }
 
-  Future<void> _verifyOTP(String email, String userId) async {
+  Future<void> _sendCompanyEmails(
+      String email, String companyName, String name) async {
+    try {
+      // 1. Send document request to company
+      final docRequestCallable =
+          _functions.httpsCallable('sendCompanyDocumentRequest');
+      await docRequestCallable.call({
+        'email': email,
+        'companyName': companyName,
+      });
+
+      // 2. Notify admin about new company
+      final adminNotifyCallable =
+          _functions.httpsCallable('notifyAdminNewCompany');
+      await adminNotifyCallable.call({
+        'email': email,
+        'companyName': companyName,
+        'name': name,
+      });
+
+      print('✅ Company emails sent successfully');
+    } catch (e) {
+      print('⚠️ Error sending company emails: $e');
+      // Don't block the flow if emails fail
+    }
+  }
+
+  Future<void> _verifyOTP(String email, String userId, String userType) async {
     if (_otpController.text.isEmpty) {
       _showErrorDialog('Please enter the verification code.');
       return;
@@ -146,7 +199,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           await _firestore.collection('AdminOTPs').doc(email).get();
 
       if (!otpDoc.exists) {
-        _showErrorDialog('Verification code not found. Please log in again.');
+        _showErrorDialog('Verification code not found. Please try again.');
         setState(() {
           _isLoading = false;
         });
@@ -177,28 +230,63 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       }
 
       if (_otpController.text.trim() == savedOTP) {
+        // Mark OTP as used
         await _firestore.collection('AdminOTPs').doc(email).update({
           'Used': true,
         });
 
+        // Update IsEmailVerified
         await _firestore.collection('Users').doc(userId).update({
+          'IsEmailVerified': true,
           'lastLoginTime': FieldValue.serverTimestamp(),
         });
 
-        _showSuccessSnackBar('✅ Verification successful!');
+        // Handle different user types
+        if (userType == 'Admin') {
+          _showSuccessSnackBar('✅ Verification successful!');
+          await Future.delayed(Duration(milliseconds: 500));
+          Navigator.pushReplacementNamed(context, '/admin-dashboard');
+        } else if (userType == 'Company') {
+          // Get company details for emails
+          DocumentSnapshot userDoc =
+              await _firestore.collection('Users').doc(userId).get();
+          Map<String, dynamic> userData =
+              userDoc.data() as Map<String, dynamic>;
+          String companyName = userData['CompanyName'] ?? '';
+          String name = userData['Name'] ?? '';
 
-        await Future.delayed(Duration(milliseconds: 500));
+          // Send emails to company and admin
+          await _sendCompanyEmails(email, companyName, name);
 
-        Navigator.pushReplacementNamed(context, '/admin-dashboard');
+          setState(() {
+            _isLoading = false;
+          });
+
+          _showSuccessDialog(
+            'Your email has been verified successfully!\n\nPlease check your email for instructions on submitting company verification documents.\n\nYour account is currently pending approval.',
+            () {
+              Navigator.pushReplacementNamed(context, '/login');
+            },
+          );
+        } else if (userType == 'JobSeeker') {
+          _showSuccessSnackBar('✅ Verification successful!');
+          await Future.delayed(Duration(milliseconds: 500));
+          Navigator.pushReplacementNamed(context, '/jobseeker-home');
+        }
+
+        // Delete OTP document
+        await _firestore.collection('AdminOTPs').doc(email).delete();
       } else {
         _showErrorDialog('Incorrect verification code. Please try again.');
       }
     } catch (e) {
       _showErrorDialog('An error occurred: ${e.toString()}');
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -214,6 +302,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
     final String email = args['email'];
     final String userId = args['userId'];
+    final String userType = args['userType'] ?? 'Admin';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -225,6 +314,10 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           onPressed: () async {
             await FirebaseAuth.instance.signOut();
             await _firestore.collection('AdminOTPs').doc(email).delete();
+
+            // Delete user document if verification not completed
+            await _firestore.collection('Users').doc(userId).delete();
+
             Navigator.pushReplacementNamed(context, '/login');
           },
         ),
@@ -235,14 +328,14 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              /// 🔹 الصورة بدل أيقونة البريد
+              // Logo
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Image.asset(
                   'assets/images/logo.jpg',
                   height: 120,
                   width: 120,
-                  fit: BoxFit.contain, // علشان تطلع كاملة بدون قص
+                  fit: BoxFit.contain,
                 ),
               ),
               SizedBox(height: 30),
@@ -266,7 +359,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               ),
               SizedBox(height: 40),
 
-              // حقل إدخال OTP
+              // OTP Input Field
               Container(
                 decoration: BoxDecoration(
                   border: Border.all(
@@ -309,7 +402,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                 ),
               SizedBox(height: 24),
 
-              // زر التحقق
+              // Verify Button
               Container(
                 width: double.infinity,
                 height: 56,
@@ -325,8 +418,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                   ],
                 ),
                 child: TextButton(
-                  onPressed:
-                      _isLoading ? null : () => _verifyOTP(email, userId),
+                  onPressed: _isLoading
+                      ? null
+                      : () => _verifyOTP(email, userId, userType),
                   style: TextButton.styleFrom(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -353,11 +447,11 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               ),
               SizedBox(height: 16),
 
-              // زر إعادة الإرسال
+              // Resend Button
               TextButton.icon(
                 onPressed: (_isResending || _resendCountdown > 0)
                     ? null
-                    : () => _resendOTP(email),
+                    : () => _resendOTP(email, userType),
                 icon: _isResending
                     ? SizedBox(
                         width: 16,
@@ -384,7 +478,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               ),
               SizedBox(height: 24),
 
-              // ملاحظة أسفل الشاشة
+              // Info Box
               Container(
                 padding: EdgeInsets.all(16),
                 decoration: BoxDecoration(

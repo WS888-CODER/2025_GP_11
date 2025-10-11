@@ -9,6 +9,7 @@ import 'package:gp_2025_11/screens/jobseeker_home.dart';
 import 'package:gp_2025_11/screens/company_home.dart';
 import 'package:gp_2025_11/screens/admin_dashboard.dart';
 import 'package:gp_2025_11/screens/job_posting_page.dart';
+import 'package:gp_2025_11/screens/signup_screen.dart';
 import 'package:gp_2025_11/screens/otp_verification_screen.dart'; // ← ضيفي هذا السطر
 
 void main() async {
@@ -35,6 +36,7 @@ class Jadeer extends StatelessWidget {
         '/start': (context) => StartScreen(),
         '/login': (context) => LoginScreen(),
         '/jobseeker-home': (context) => JobSeekerHome(),
+        '/signup': (context) => SignupScreen(),
         '/company-home': (context) => CompanyHome(),
         '/otp-verification': (context) => OTPVerificationScreen(),
         '/admin-dashboard': (context) => AdminDashboard(),
