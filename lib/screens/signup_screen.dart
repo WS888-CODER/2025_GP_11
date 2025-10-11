@@ -83,9 +83,33 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   // Validate name (no numbers or special characters)
+
   bool _isValidName(String name) {
+    // 1. تنظيف المسافات الزيادة
+    String trimmedName = name.trim();
+
+    // 2. التأكد من وجود حروف ومسافات فقط (لا أرقام ولا رموز)
     final nameRegex = RegExp(r'^[a-zA-Z\s]+$');
-    return nameRegex.hasMatch(name);
+    if (!nameRegex.hasMatch(trimmedName)) {
+      return false; // فيه أرقام أو رموز
+    }
+
+    // 3. تقسيم الاسم إلى كلمات (حسب المسافات)
+    List<String> words = trimmedName.split(RegExp(r'\s+'));
+
+    // 4. التأكد من وجود كلمتين على الأقل
+    if (words.length < 2) {
+      return false; // كلمة واحدة فقط
+    }
+
+    // 5. التأكد من أن كل كلمة ليست فارغة
+    for (String word in words) {
+      if (word.isEmpty) {
+        return false;
+      }
+    }
+
+    return true; // ✅ الاسم صحيح
   }
 
   // ✅ التعديل الجديد: فحص الإيميل من Firebase Auth مباشرة
