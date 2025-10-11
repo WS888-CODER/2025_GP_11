@@ -12,9 +12,6 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
-  http: ^1.1.0
-
-
   
   # Firebase - آخر إصدارات متوافقة مع Java 17
   firebase_core: ^3.15.0

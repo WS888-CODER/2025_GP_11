@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:math';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -42,6 +43,37 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // توليد OTP عشوائي من 6 أرقام
+  String _generateOTP() {
+    Random random = Random();
+    return (100000 + random.nextInt(900000)).toString();
+  }
+
+  // Send OTP via Firestore (for testing, print to console)
+  Future<bool> _sendOTPEmail(String email, String otp) async {
+    try {
+      // Save OTP in Firestore with expiration time
+      await _firestore.collection('AdminOTPs').doc(email).set({
+        'otp': otp,
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt':
+            DateTime.now().add(Duration(minutes: 5)).millisecondsSinceEpoch,
+      });
+
+      // NOTE: For production, use Cloud Functions to send actual email
+      // For now, print OTP to console for testing
+      print('========================================');
+      print('📧 OTP CODE FOR TESTING: $otp');
+      print('📧 Email: $email');
+      print('========================================');
+
+      return true;
+    } catch (e) {
+      print('Error sending OTP: $e');
+      return false;
+    }
+  }
+
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -62,7 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Step 2: Fetch user data from Firestore
       DocumentSnapshot userDoc =
-          await _firestore.collection('users').doc(userId).get();
+          await _firestore.collection('Users').doc(userId).get();
 
       if (!userDoc.exists) {
         await _auth.signOut();
@@ -74,9 +106,34 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+      String userType = userData['UserType'] ?? userData['userType'] ?? '';
 
-      // Step 3: Check user type and navigate
-      String userType = userData['userType'] ?? '';
+      // للأدمن - نرسل OTP
+      if (userType == 'Admin') {
+        String otp = _generateOTP();
+        bool otpSent = await _sendOTPEmail(_emailController.text.trim(), otp);
+
+        if (otpSent) {
+          // ننتقل لصفحة إدخال OTP
+          Navigator.pushReplacementNamed(
+            context,
+            '/otp-verification',
+            arguments: {
+              'email': _emailController.text.trim(),
+              'userId': userId,
+            },
+          );
+        } else {
+          await _auth.signOut();
+          _showErrorDialog('فشل إرسال رمز التحقق. حاول مرة أخرى.');
+        }
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // للباقي نطبق الشروط العادية
       bool isEmailVerified = userData['isEmailVerified'] ?? false;
       String accountStatus = userData['accountStatus'] ?? 'Pending';
 
@@ -102,11 +159,9 @@ class _LoginScreenState extends State<LoginScreen> {
           _showErrorDialog(
               'Your account has been rejected. Please contact support.');
         }
-      } else if (userType == 'Admin') {
-        Navigator.pushReplacementNamed(context, '/admin-dashboard');
       } else {
         await _auth.signOut();
-        _showErrorDialog('Unknown user type');
+        _showErrorDialog('Unknown user type: "$userType"');
       }
     } on FirebaseAuthException catch (e) {
       String errorMessage = 'An error occurred during login';
