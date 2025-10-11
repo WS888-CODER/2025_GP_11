@@ -88,18 +88,18 @@ class _SignupScreenState extends State<SignupScreen> {
     return nameRegex.hasMatch(name);
   }
 
-  // Check if email is unique
+  // ✅ التعديل الجديد: فحص الإيميل من Firebase Auth مباشرة
   Future<bool> _isEmailUnique(String email) async {
     try {
-      final querySnapshot = await _firestore
-          .collection('Users')
-          .where("Email", isEqualTo: email.trim())
-          .limit(1)
-          .get();
+      // نجرب نحصل على methods للإيميل
+      final methods = await _auth.fetchSignInMethodsForEmail(email.trim());
 
-      return querySnapshot.docs.isEmpty;
+      // إذا methods فاضية = الإيميل مش مسجل ✅
+      // إذا methods فيها قيم = الإيميل مسجل ❌
+      return methods.isEmpty;
     } catch (e) {
-      print('Error checking email uniqueness: $e');
+      print('❌ Error checking email: $e');
+      // في حالة الـ error، نرجع false عشان نكون على الجانب الآمن
       return false;
     }
   }
@@ -345,43 +345,6 @@ class _SignupScreenState extends State<SignupScreen> {
   Widget _buildCompanyForm() {
     return Column(
       children: [
-        // Name Field
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            'Name',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFFFF7B7B),
-            ),
-          ),
-        ),
-        SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: Color(0xFF4A5FBC), width: 2),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: TextFormField(
-            controller: _companyFullNameController,
-            decoration: InputDecoration(
-              hintText: 'Enter your name',
-              hintStyle: TextStyle(color: Colors.grey[400]),
-              border: InputBorder.none,
-              contentPadding:
-                  EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            ),
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'Please enter your name';
-              }
-              return null;
-            },
-          ),
-        ),
-        SizedBox(height: 24),
-
         // Company Name Field
         Align(
           alignment: Alignment.centerLeft,
@@ -412,6 +375,43 @@ class _SignupScreenState extends State<SignupScreen> {
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return 'Please enter company name';
+              }
+              return null;
+            },
+          ),
+        ),
+        SizedBox(height: 24),
+
+        // Full Name Field
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Full Name',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFFFF7B7B),
+            ),
+          ),
+        ),
+        SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Color(0xFF4A5FBC), width: 2),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: TextFormField(
+            controller: _companyFullNameController,
+            decoration: InputDecoration(
+              hintText: 'Enter your full name',
+              hintStyle: TextStyle(color: Colors.grey[400]),
+              border: InputBorder.none,
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter your full name';
               }
               return null;
             },
@@ -521,7 +521,7 @@ class _SignupScreenState extends State<SignupScreen> {
         Align(
           alignment: Alignment.centerLeft,
           child: Text(
-            'Name',
+            'Full Name',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -538,7 +538,7 @@ class _SignupScreenState extends State<SignupScreen> {
           child: TextFormField(
             controller: _seekerNameController,
             decoration: InputDecoration(
-              hintText: 'Enter your name',
+              hintText: 'Enter your full name',
               hintStyle: TextStyle(color: Colors.grey[400]),
               border: InputBorder.none,
               contentPadding:
