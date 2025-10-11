@@ -11,21 +11,16 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  
-  # Firebase - آخر إصدارات متوافقة مع Java 17
-  firebase_core: ^3.15.0
-  firebase_auth: ^5.7.0
-  cloud_firestore: ^5.6.0
-  firebase_storage: ^12.4.0
-  
-  # باقي المكتبات
-  image_picker: ^1.1.2
-  provider: ^6.1.2
-  intl: ^0.19.0
-  flutter_local_notifications: ^18.0.1
-  url_launcher: ^6.3.1
-  shared_preferences: ^2.3.2
-  http: ^1.2.2
+  firebase_core: ^4.1.1
+  firebase_auth: ^6.1.0
+  cloud_firestore: ^6.0.2
+  firebase_storage: ^13.0.2
+  image_picker: ^1.2.0
+  provider: ^6.1.5+1
+  intl: ^0.20.2
+  url_launcher: ^6.3.2
+  shared_preferences: ^2.5.3
+  http: ^1.5.0
 
 dev_dependencies:
   flutter_test:

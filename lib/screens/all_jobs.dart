@@ -14,8 +14,7 @@ class JobFields {
   static const endDate = 'EndDate';
   static const description = 'JobDescription';
   static const status = 'JobStatus';
-  static const requirements = 'Requirements';
-  static const requirementsAlt = 'Requirments';
+  static const requirements = 'Requirments';
   static const specialty = 'Specialty';
   static const userId = 'UserID';
   static const company = 'Company';
@@ -34,7 +33,7 @@ class Job {
   final DateTime? endDate;
   final String description;
   final String status;
-  final List<String> requirements; // Requirements/Requirments
+  final List<String> requirements;
   final String specialty;
   final String userId;
   final String? applyUrl; // ApplyURL
@@ -64,7 +63,7 @@ class Job {
     List<String> asStringList(dynamic v) =>
         v is List ? v.map((e) => e.toString()).toList() : <String>[];
 
-    final req = d[JobFields.requirements] ?? d[JobFields.requirementsAlt];
+    final req = d[JobFields.requirements] ?? d[JobFields.requirements];
 
     return Job(
       id: doc.id,
@@ -72,8 +71,7 @@ class Job {
       title: (d[JobFields.title] ?? '').toString(),
       position: (d[JobFields.position] ?? '').toString(),
       keywords: asStringList(d[JobFields.keywords]),
-      postedAt:
-          asDate(d[JobFields.startDate]) ??
+      postedAt: asDate(d[JobFields.startDate]) ??
           DateTime.fromMillisecondsSinceEpoch(0),
       endDate: asDate(d[JobFields.endDate]),
       description: (d[JobFields.description] ?? '').toString(),
@@ -102,8 +100,13 @@ enum SortOrder { newestFirst, oldestFirst }
 
 class JobsPage extends StatefulWidget {
   final UserProfile profile;
-  final List<String> allMajors; // first item must be "All"
-  const JobsPage({super.key, required this.profile, required this.allMajors});
+  final List<String> allMajors;
+
+  const JobsPage({
+    super.key,
+    this.profile = const UserProfile(), // قيمة افتراضية
+    this.allMajors = const ['All'], // قيمة افتراضية
+  });
 
   @override
   State<JobsPage> createState() => _JobsPageState();
@@ -337,8 +340,7 @@ class _JobsPageState extends State<JobsPage> {
                   itemBuilder: (context, i) {
                     final j = jobs[i];
                     final saved = widget.profile.savedJobIds.contains(j.id);
-                    final isClosed =
-                        (j.endDate != null &&
+                    final isClosed = (j.endDate != null &&
                             j.endDate!.isBefore(DateTime.now())) ||
                         j.status.toLowerCase() == 'closed';
 
@@ -373,7 +375,6 @@ class _JobsPageState extends State<JobsPage> {
                                           ),
                                         ),
                                         const SizedBox(height: 2),
-
                                         const SizedBox(height: 2),
                                         Text(
                                           'Posted: ${_fmtDate(j.postedAt)}',
@@ -482,12 +483,13 @@ class UserProfile {
   final String? major;
   final bool hasMinimumInfo;
   final Set<String> savedJobIds;
-  UserProfile({
+
+  const UserProfile({
     this.cvUrl,
     this.major,
     this.hasMinimumInfo = false,
-    Set<String>? savedJobIds,
-  }) : savedJobIds = savedJobIds ?? {};
+    this.savedJobIds = const {},
+  });
 }
 
 /* ========================== DETAILS PAGE ========================== */
@@ -503,7 +505,7 @@ class JobDetailsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final isClosed =
         (job.endDate != null && job.endDate!.isBefore(DateTime.now())) ||
-        job.status.toLowerCase() == 'closed';
+            job.status.toLowerCase() == 'closed';
 
     return Scaffold(
       appBar: AppBar(title: Text(job.title)),

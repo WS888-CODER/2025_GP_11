@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:gp_2025_11/screens/all_jobs.dart';
 import 'firebase_options.dart';
 import 'package:gp_2025_11/config/theme.dart';
 import 'package:gp_2025_11/screens/start_screen.dart';
@@ -28,7 +29,7 @@ class Jadeer extends StatelessWidget {
     return MaterialApp(
       title: 'Jadeer',
       theme: AppTheme.lightTheme,
-      home: StartScreen(),
+      home: const JobsPage(),
       debugShowCheckedModeBanner: false,
       routes: {
         '/start': (context) => StartScreen(),
