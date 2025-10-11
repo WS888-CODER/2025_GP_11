@@ -19,7 +19,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   final FirebaseFunctions _functions =
       FirebaseFunctions.instanceFor(region: 'us-central1');
 
-  // Timer للعد التنازلي
   Timer? _resendTimer;
   int _resendCountdown = 0;
 
@@ -38,7 +37,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
   void _startResendTimer() {
     setState(() {
-      _resendCountdown = 120; // دقيقتين
+      _resendCountdown = 120;
     });
 
     _resendTimer = Timer.periodic(Duration(seconds: 1), (timer) {
@@ -56,12 +55,12 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('خطأ', textDirection: TextDirection.rtl),
-        content: Text(message, textDirection: TextDirection.rtl),
+        title: Text('Error'),
+        content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('حسناً'),
+            child: Text('OK'),
           ),
         ],
       ),
@@ -71,24 +70,22 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, textDirection: TextDirection.rtl),
+        content: Text(message),
         backgroundColor: Colors.green,
         behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
-  // توليد OTP جديد
   String _generateOTP() {
     Random random = Random();
     return (100000 + random.nextInt(900000)).toString();
   }
 
-  // إعادة إرسال OTP
   Future<void> _resendOTP(String email) async {
     if (_resendCountdown > 0) {
       _showErrorDialog(
-          'الرمز الحالي لم تنتهِ صلاحيته بعد. انتظر $_resendCountdown ثانية');
+          'The current OTP is still valid. Please wait $_resendCountdown seconds.');
       return;
     }
 
@@ -99,7 +96,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     try {
       String newOtp = _generateOTP();
 
-      // إرسال OTP الجديد
       final callable = _functions.httpsCallable('sendAdminOtp');
       final result = await callable.call({
         'email': email,
@@ -107,7 +103,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       });
 
       if (result.data['success'] == true) {
-        // ✅ تحديث OTP في AdminOTPs collection
         await _firestore.collection('AdminOTPs').doc(email).set({
           'OTP': newOtp,
           'Email': email,
@@ -118,12 +113,12 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           'Used': false,
         });
 
-        _showSuccessSnackBar('✅ تم إرسال رمز تحقق جديد');
+        _showSuccessSnackBar('✅ A new verification code has been sent.');
         _startResendTimer();
         _otpController.clear();
       }
     } catch (e) {
-      _showErrorDialog('فشل إرسال الرمز الجديد: ${e.toString()}');
+      _showErrorDialog('Failed to send new OTP: ${e.toString()}');
     } finally {
       setState(() {
         _isResending = false;
@@ -133,12 +128,12 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
   Future<void> _verifyOTP(String email, String userId) async {
     if (_otpController.text.isEmpty) {
-      _showErrorDialog('الرجاء إدخال رمز التحقق');
+      _showErrorDialog('Please enter the verification code.');
       return;
     }
 
     if (_otpController.text.length != 6) {
-      _showErrorDialog('رمز التحقق يجب أن يكون 6 أرقام');
+      _showErrorDialog('The verification code must be 6 digits.');
       return;
     }
 
@@ -147,12 +142,11 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     });
 
     try {
-      // ✅ نجيب الـ OTP من AdminOTPs collection
       DocumentSnapshot otpDoc =
           await _firestore.collection('AdminOTPs').doc(email).get();
 
       if (!otpDoc.exists) {
-        _showErrorDialog('رمز التحقق غير موجود. حاول تسجيل الدخول مرة أخرى.');
+        _showErrorDialog('Verification code not found. Please log in again.');
         setState(() {
           _isLoading = false;
         });
@@ -164,20 +158,17 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       Timestamp expiresAt = otpData['ExpiresAt'];
       bool used = otpData['Used'] ?? false;
 
-      // نتحقق من أن الرمز لم يُستخدم من قبل
       if (used) {
-        _showErrorDialog('هذا الرمز تم استخدامه مسبقاً. اطلب رمز جديد.');
+        _showErrorDialog('This code has already been used. Request a new one.');
         setState(() {
           _isLoading = false;
         });
         return;
       }
 
-      // نتحقق من صلاحية الوقت
       if (DateTime.now().isAfter(expiresAt.toDate())) {
         _showErrorDialog(
-            'انتهت صلاحية الرمز. اضغط "إعادة الإرسال" للحصول على رمز جديد.');
-        // ✅ مسح OTP المنتهي
+            'The code has expired. Please click "Resend Code" to get a new one.');
         await _firestore.collection('AdminOTPs').doc(email).delete();
         setState(() {
           _isLoading = false;
@@ -185,9 +176,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         return;
       }
 
-      // نتحقق من الرمز
       if (_otpController.text.trim() == savedOTP) {
-        // ✅ الرمز صحيح - نحدث حالة Used
         await _firestore.collection('AdminOTPs').doc(email).update({
           'Used': true,
         });
@@ -196,17 +185,16 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           'lastLoginTime': FieldValue.serverTimestamp(),
         });
 
-        _showSuccessSnackBar('✅ تم التحقق بنجاح!');
+        _showSuccessSnackBar('✅ Verification successful!');
 
-        // انتظار قصير لعرض الرسالة
         await Future.delayed(Duration(milliseconds: 500));
 
         Navigator.pushReplacementNamed(context, '/admin-dashboard');
       } else {
-        _showErrorDialog('رمز التحقق غير صحيح. تأكد من الرمز وحاول مرة أخرى.');
+        _showErrorDialog('Incorrect verification code. Please try again.');
       }
     } catch (e) {
-      _showErrorDialog('حدث خطأ: ${e.toString()}');
+      _showErrorDialog('An error occurred: ${e.toString()}');
     } finally {
       setState(() {
         _isLoading = false;
@@ -236,7 +224,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           icon: Icon(Icons.arrow_back, color: Color(0xFF4A5FBC)),
           onPressed: () async {
             await FirebaseAuth.instance.signOut();
-            // ✅ حذف OTP عند الرجوع
             await _firestore.collection('AdminOTPs').doc(email).delete();
             Navigator.pushReplacementNamed(context, '/login');
           },
@@ -248,48 +235,38 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.mark_email_read,
-                size: 80,
-                color: Color(0xFF4A5FBC),
+              /// 🔹 الصورة بدل أيقونة البريد
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.asset(
+                  'assets/images/logo.jpg',
+                  height: 120,
+                  width: 120,
+                  fit: BoxFit.contain, // علشان تطلع كاملة بدون قص
+                ),
               ),
               SizedBox(height: 30),
+
               Text(
-                'تحقق من بريدك الإلكتروني',
+                'Verify Your Email',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF4A5FBC),
                 ),
-                textDirection: TextDirection.rtl,
               ),
               SizedBox(height: 16),
               Text(
-                'تم إرسال رمز التحقق المكون من 6 أرقام إلى:',
+                'A 6-digit verification code has been sent to your email.',
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.grey[600],
                 ),
                 textAlign: TextAlign.center,
-                textDirection: TextDirection.rtl,
-              ),
-              SizedBox(height: 8),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Color(0xFF4A5FBC).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  email,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF4A5FBC),
-                  ),
-                ),
               ),
               SizedBox(height: 40),
+
+              // حقل إدخال OTP
               Container(
                 decoration: BoxDecoration(
                   border: Border.all(
@@ -324,14 +301,15 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               SizedBox(height: 16),
               if (_resendCountdown > 0)
                 Text(
-                  'يمكنك إعادة الإرسال بعد: ${_formatTime(_resendCountdown)}',
+                  'You can resend the code in: ${_formatTime(_resendCountdown)}',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey[600],
                   ),
-                  textDirection: TextDirection.rtl,
                 ),
               SizedBox(height: 24),
+
+              // زر التحقق
               Container(
                 width: double.infinity,
                 height: 56,
@@ -364,7 +342,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                           ),
                         )
                       : Text(
-                          'تحقق',
+                          'Verify',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -374,6 +352,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                 ),
               ),
               SizedBox(height: 16),
+
+              // زر إعادة الإرسال
               TextButton.icon(
                 onPressed: (_isResending || _resendCountdown > 0)
                     ? null
@@ -394,7 +374,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                             : Color(0xFF4A5FBC),
                       ),
                 label: Text(
-                  'إعادة إرسال الرمز',
+                  'Resend Code',
                   style: TextStyle(
                     color:
                         _resendCountdown > 0 ? Colors.grey : Color(0xFF4A5FBC),
@@ -403,6 +383,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                 ),
               ),
               SizedBox(height: 24),
+
+              // ملاحظة أسفل الشاشة
               Container(
                 padding: EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -416,12 +398,11 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                     SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'رمز التحقق صالح لمدة دقيقتين فقط',
+                        'The verification code is valid for 2 minutes only.',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.blue[700],
                         ),
-                        textDirection: TextDirection.rtl,
                       ),
                     ),
                   ],
