@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'dart:math';
 
 class LoginScreen extends StatefulWidget {
@@ -43,33 +44,58 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // توليد OTP عشوائي من 6 أرقام
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   String _generateOTP() {
     Random random = Random();
     return (100000 + random.nextInt(900000)).toString();
   }
 
-  // Send OTP via Firestore (for testing, print to console)
   Future<bool> _sendOTPEmail(String email, String otp) async {
     try {
-      // Save OTP in Firestore with expiration time
+      print('🔵 Starting to send OTP...');
+      print('🔵 Email: $email');
+      print('🔵 OTP: $otp');
+
+      // ✅ التعديل: حددت الـ region بوضوح
+      final callable = FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('sendAdminOtp');
+
+      print('🔵 Calling Cloud Function...');
+      final result = await callable.call({
+        'email': email,
+        'otp': otp,
+      });
+
+      print('🔵 Cloud Function response: ${result.data}');
+
       await _firestore.collection('AdminOTPs').doc(email).set({
         'otp': otp,
         'createdAt': FieldValue.serverTimestamp(),
-        'expiresAt':
-            DateTime.now().add(Duration(minutes: 5)).millisecondsSinceEpoch,
+        'expiresAt': Timestamp.fromDate(
+          DateTime.now().add(Duration(minutes: 2)),
+        ),
+        'used': false,
       });
 
-      // NOTE: For production, use Cloud Functions to send actual email
-      // For now, print OTP to console for testing
-      print('========================================');
-      print('📧 OTP CODE FOR TESTING: $otp');
-      print('📧 Email: $email');
-      print('========================================');
-
+      print('✅ SUCCESS! OTP saved to Firestore and email sent!');
       return true;
     } catch (e) {
-      print('Error sending OTP: $e');
+      print('❌ FULL ERROR: $e');
+      print('❌ Error type: ${e.runtimeType}');
+      if (e is FirebaseFunctionsException) {
+        print('❌ Firebase Functions Error Code: ${e.code}');
+        print('❌ Firebase Functions Error Message: ${e.message}');
+        print('❌ Firebase Functions Error Details: ${e.details}');
+      }
       return false;
     }
   }
@@ -84,7 +110,6 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Step 1: Authenticate with Firebase
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
@@ -92,7 +117,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       String userId = userCredential.user!.uid;
 
-      // Step 2: Fetch user data from Firestore
       DocumentSnapshot userDoc =
           await _firestore.collection('Users').doc(userId).get();
 
@@ -108,13 +132,16 @@ class _LoginScreenState extends State<LoginScreen> {
       Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
       String userType = userData['UserType'] ?? userData['userType'] ?? '';
 
-      // للأدمن - نرسل OTP
+      print('🟢 User Type: $userType');
+
       if (userType == 'Admin') {
+        print('🟢 Admin detected! Sending OTP...');
         String otp = _generateOTP();
         bool otpSent = await _sendOTPEmail(_emailController.text.trim(), otp);
 
         if (otpSent) {
-          // ننتقل لصفحة إدخال OTP
+          _showSuccessSnackBar('✅ Verification code sent to your email');
+
           Navigator.pushReplacementNamed(
             context,
             '/otp-verification',
@@ -125,7 +152,8 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         } else {
           await _auth.signOut();
-          _showErrorDialog('فشل إرسال رمز التحقق. حاول مرة أخرى.');
+          _showErrorDialog(
+              'Failed to send verification code. Check console for details.');
         }
         setState(() {
           _isLoading = false;
@@ -133,7 +161,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // للباقي نطبق الشروط العادية
       bool isEmailVerified = userData['isEmailVerified'] ?? false;
       String accountStatus = userData['accountStatus'] ?? 'Pending';
 
