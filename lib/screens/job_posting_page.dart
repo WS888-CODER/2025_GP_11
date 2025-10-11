@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
 
 class JobPostingPage extends StatefulWidget {
   const JobPostingPage({super.key});
@@ -96,6 +99,55 @@ class _JobPostingPageState extends State<JobPostingPage> {
       print('Speciality: ${_specialityController.text}');
     }
   }
+Future<void> _generateJobPost() async {
+  if (_jobTitleController.text.isEmpty || _positionController.text.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Please enter job title and position first')),
+    );
+    return;
+  }
+
+  final skills = _requirements.join(', ');
+  final url = Uri.parse('http://10.0.2.2:5000/generateJobPost'); // For Android emulator
+  // Use http://localhost:5000 if you're running Flutter Web
+
+  try {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Generating job description...')),
+    );
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'title': _jobTitleController.text,
+        'company': 'Jadeer',
+        'skills': skills.isNotEmpty ? skills : _specialityController.text,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final generatedText = data['job_post'];
+
+      setState(() {
+        _jobDescriptionController.text = generatedText;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('AI job description generated!')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed: ${response.body}')),
+      );
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error: $e')),
+    );
+  }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -111,9 +163,11 @@ class _JobPostingPageState extends State<JobPostingPage> {
             // Job Title
             TextFormField(
               controller: _jobTitleController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Job Title *',
-                border: OutlineInputBorder(),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -122,42 +176,74 @@ class _JobPostingPageState extends State<JobPostingPage> {
                 return null;
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
 
             // AI Generate Button
-            Container(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Colors.purple, Colors.deepPurple],
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.auto_awesome, size: 20),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _generateJobPost,
+                icon: const Icon(Icons.auto_awesome, size: 18),
                 label: const Text(
                   'Generate with AI',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
+                style: TextButton.styleFrom(
                   foregroundColor: Colors.white,
-                  shadowColor: Colors.transparent,
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  backgroundColor: const Color(0xFF49469F),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+
+            // Position
+            TextFormField(
+              controller: _positionController,
+              decoration: InputDecoration(
+                labelText: 'Position *',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'This field is required';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Speciality
+            TextFormField(
+              controller: _specialityController,
+              decoration: InputDecoration(
+                labelText: 'Speciality *',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'This field is required';
+                }
+                return null;
+              },
+            ),
             const SizedBox(height: 16),
 
             // Job Description
             TextFormField(
               controller: _jobDescriptionController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Job Description *',
-                border: OutlineInputBorder(),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               maxLines: 4,
               validator: (value) {
@@ -171,6 +257,9 @@ class _JobPostingPageState extends State<JobPostingPage> {
 
             // Requirements Section
             Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -189,9 +278,11 @@ class _JobPostingPageState extends State<JobPostingPage> {
                         Expanded(
                           child: TextField(
                             controller: _requirementController,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               hintText: 'Enter requirement',
-                              border: OutlineInputBorder(),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                             onSubmitted: (_) => _addRequirement(),
                           ),
@@ -232,30 +323,16 @@ class _JobPostingPageState extends State<JobPostingPage> {
             ),
             const SizedBox(height: 16),
 
-            // Position
-            TextFormField(
-              controller: _positionController,
-              decoration: const InputDecoration(
-                labelText: 'Position *',
-                border: OutlineInputBorder(),
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'This field is required';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-
             // Start Date
             InkWell(
               onTap: _selectStartDate,
               child: InputDecorator(
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Start Date *',
-                  border: OutlineInputBorder(),
-                  suffixIcon: Icon(Icons.calendar_today),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  suffixIcon: const Icon(Icons.calendar_today),
                 ),
                 child: Text(
                   _startDate != null
@@ -273,10 +350,12 @@ class _JobPostingPageState extends State<JobPostingPage> {
             InkWell(
               onTap: _selectEndDate,
               child: InputDecorator(
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'End Date *',
-                  border: OutlineInputBorder(),
-                  suffixIcon: Icon(Icons.calendar_today),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  suffixIcon: const Icon(Icons.calendar_today),
                 ),
                 child: Text(
                   _endDate != null
@@ -288,22 +367,6 @@ class _JobPostingPageState extends State<JobPostingPage> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-
-            // Speciality
-            TextFormField(
-              controller: _specialityController,
-              decoration: const InputDecoration(
-                labelText: 'Speciality *',
-                border: OutlineInputBorder(),
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'This field is required';
-                }
-                return null;
-              },
-            ),
             const SizedBox(height: 24),
 
             // Submit Button
@@ -311,6 +374,9 @@ class _JobPostingPageState extends State<JobPostingPage> {
               onPressed: _submitForm,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               child: const Text(
                 'Create Job Posting',
