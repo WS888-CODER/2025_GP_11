@@ -7,6 +7,7 @@ import 'package:gp_2025_11/screens/login_screen.dart';
 import 'package:gp_2025_11/screens/jobseeker_home.dart';
 import 'package:gp_2025_11/screens/company_home.dart';
 import 'package:gp_2025_11/screens/admin_dashboard.dart';
+import 'package:gp_2025_11/screens/job_posting_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,7 +27,7 @@ class Jadeer extends StatelessWidget {
     return MaterialApp(
       title: 'Jadeer',
       theme: AppTheme.lightTheme,
-      home: StartScreen(),
+      home: StartScreen(), // رجعته للـ StartScreen
       debugShowCheckedModeBanner: false,
       routes: {
         '/start': (context) => StartScreen(),
@@ -34,6 +35,7 @@ class Jadeer extends StatelessWidget {
         '/jobseeker-home': (context) => JobSeekerHome(),
         '/company-home': (context) => CompanyHome(),
         '/admin-dashboard': (context) => AdminDashboard(),
+        '/job-posting': (context) => const JobPostingPage(),
       },
     );
   }
