@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-
 class JobPostingPage extends StatefulWidget {
   const JobPostingPage({super.key});
 
@@ -75,6 +74,63 @@ class _JobPostingPageState extends State<JobPostingPage> {
     });
   }
 
+  Future<void> _generateJobPost() async {
+    if (_jobTitleController.text.isEmpty || _positionController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter job title and position first')),
+      );
+      return;
+    }
+
+    final skills = _requirements.join(', ');
+    final url = Uri.parse('http://10.0.2.2:5000/generateJobPost'); // Android Emulator
+    // Use http://localhost:5000 if you're running Flutter Web
+
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Generating job description...')),
+      );
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'title': _jobTitleController.text,
+          'company': 'Jadeer',
+          'skills': skills.isNotEmpty ? skills : _specialityController.text,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final generatedText = data['job_post'];
+
+        final cleanedText = generatedText
+            .replaceAll(RegExp(r'\*\*'), '') // remove bold markers
+            .replaceAll(RegExp(r'\*'), '') // remove extra stars
+            .replaceAll(RegExp(r'#+'), '') // remove markdown headers
+            .replaceAll(RegExp(r'- '), '• ') // replace dashes with bullets
+            .trim();
+
+        setState(() {
+          _jobDescriptionController.text = cleanedText;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI job description generated!')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: ${response.body}')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
+  }
+
   void _submitForm() {
     if (_formKey.currentState!.validate()) {
       if (_requirements.isEmpty) {
@@ -84,12 +140,10 @@ class _JobPostingPageState extends State<JobPostingPage> {
         return;
       }
 
-      // Form is valid, process the data
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Job posting created successfully')),
       );
 
-      // Here you can process the form data
       print('Job Title: ${_jobTitleController.text}');
       print('Description: ${_jobDescriptionController.text}');
       print('Requirements: $_requirements');
@@ -99,55 +153,6 @@ class _JobPostingPageState extends State<JobPostingPage> {
       print('Speciality: ${_specialityController.text}');
     }
   }
-Future<void> _generateJobPost() async {
-  if (_jobTitleController.text.isEmpty || _positionController.text.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please enter job title and position first')),
-    );
-    return;
-  }
-
-  final skills = _requirements.join(', ');
-  final url = Uri.parse('http://10.0.2.2:5000/generateJobPost'); // For Android emulator
-  // Use http://localhost:5000 if you're running Flutter Web
-
-  try {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Generating job description...')),
-    );
-
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'title': _jobTitleController.text,
-        'company': 'Jadeer',
-        'skills': skills.isNotEmpty ? skills : _specialityController.text,
-      }),
-    );
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final generatedText = data['job_post'];
-
-      setState(() {
-        _jobDescriptionController.text = generatedText;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('AI job description generated!')),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed: ${response.body}')),
-      );
-    }
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error: $e')),
-    );
-  }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -191,7 +196,8 @@ Future<void> _generateJobPost() async {
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.white,
                   backgroundColor: const Color(0xFF49469F),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -244,8 +250,12 @@ Future<void> _generateJobPost() async {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+                alignLabelWithHint: true,
               ),
-              maxLines: 4,
+              minLines: 6,
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.newline,
               validator: (value) {
                 if (value == null || value.isEmpty) {
                   return 'This field is required';
@@ -255,7 +265,7 @@ Future<void> _generateJobPost() async {
             ),
             const SizedBox(height: 16),
 
-            // Requirements Section
+            // Requirements
             Card(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
