@@ -3,6 +3,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:gp_2025_11/config/theme.dart';
 import 'package:gp_2025_11/screens/start_screen.dart';
+import 'package:gp_2025_11/screens/login_screen.dart';
+import 'package:gp_2025_11/screens/jobseeker_home.dart';
+import 'package:gp_2025_11/screens/company_home.dart';
+import 'package:gp_2025_11/screens/admin_dashboard.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +28,13 @@ class Jadeer extends StatelessWidget {
       theme: AppTheme.lightTheme,
       home: StartScreen(),
       debugShowCheckedModeBanner: false,
+      routes: {
+        '/start': (context) => StartScreen(),
+        '/login': (context) => LoginScreen(),
+        '/jobseeker-home': (context) => JobSeekerHome(),
+        '/company-home': (context) => CompanyHome(),
+        '/admin-dashboard': (context) => AdminDashboard(),
+      },
     );
   }
 }

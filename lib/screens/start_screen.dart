@@ -158,7 +158,7 @@ class _StartScreenState extends State<StartScreen>
                                 children: [
                                   if (_showOutline)
                                     Image.asset(
-                                      'assets/images/logo.jpg',
+                                      'assets/images/j_outline.png',
                                       fit: BoxFit.contain,
                                     ),
                                   if (_showFilled)
@@ -166,7 +166,7 @@ class _StartScreenState extends State<StartScreen>
                                       opacity: _showFilled ? 1.0 : 0.0,
                                       duration: Duration(milliseconds: 600),
                                       child: Image.asset(
-                                        'assets/images/logo.jpg',
+                                        'assets/images/j_filled.png',
                                         fit: BoxFit.contain,
                                       ),
                                     ),
