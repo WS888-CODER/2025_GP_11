@@ -22,14 +22,15 @@ const transporter = nodemailer.createTransport({
  * Cloud Function to send OTP to Admin
  */
 exports.sendAdminOtp = functions.https.onCall(async (data, context) => {
-  // ✅ DEBUG: طباعة كل شي للـ debugging
-  console.log('📥 Full data received:', JSON.stringify(data));
+  // ✅ DEBUG: طباعة كل شي للـ debugging (بدون JSON.stringify)
+  console.log('📥 Full data received:', data);
   console.log('📥 Data type:', typeof data);
-  console.log('📥 Data keys:', Object.keys(data));
+  console.log('📥 Data keys:', data ? Object.keys(data) : 'no data');
   
-  // ✅ محاولة استخراج البيانات بطرق متعددة
-  const email = data.email || data['email'] || '';
-  const otp = data.otp || data['otp'] || '';
+  // ✅ البيانات موجودة في data.data وليس data مباشرة!
+  const actualData = data.data || data;
+  const email = actualData.email || actualData['email'] || '';
+  const otp = actualData.otp || actualData['otp'] || '';
 
   console.log('📧 Extracted email:', email);
   console.log('🔢 Extracted OTP:', otp);

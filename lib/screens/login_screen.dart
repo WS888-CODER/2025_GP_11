@@ -65,18 +65,22 @@ class _LoginScreenState extends State<LoginScreen> {
       print('🔵 Email: $email');
       print('🔵 OTP: $otp');
 
-      // ✅ التعديل: حددت الـ region بوضوح
-      final callable = FirebaseFunctions.instanceFor(region: 'us-central1')
-          .httpsCallable('sendAdminOtp');
+      // ✅ الطريقة الجديدة: استخدم dynamic بدلاً من String
+      final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+
+      final callable = functions.httpsCallable('sendAdminOtp');
 
       print('🔵 Calling Cloud Function...');
+
+      // ✅ أرسل البيانات كـ Map<String, dynamic>
       final result = await callable.call({
-        'email': email,
-        'otp': otp,
+        'email': email.trim(),
+        'otp': otp.trim(),
       });
 
       print('🔵 Cloud Function response: ${result.data}');
 
+      // حفظ OTP في Firestore
       await _firestore.collection('AdminOTPs').doc(email).set({
         'otp': otp,
         'createdAt': FieldValue.serverTimestamp(),
