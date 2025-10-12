@@ -435,17 +435,9 @@ class _JobsPageState extends State<JobsPage> {
                                       ),
                                     ),
                                   const Spacer(),
-                                  TextButton(
-                                    onPressed: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              JobDetailsPage(job: j),
-                                        ),
-                                      );
-                                    },
-                                    child: const Text('Details'),
+                                  FilledButton(
+                                    onPressed: null, // visible but disabled
+                                    child: const Text('Apply'),
                                   ),
                                 ],
                               ),
@@ -494,6 +486,13 @@ class JobDetailsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(job.title)),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.all(12),
+        child: FilledButton(
+          onPressed: null, // visible but disabled
+          child: const Text('Apply'),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
