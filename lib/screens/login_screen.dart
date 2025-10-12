@@ -174,7 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       bool isEmailVerified = userData['isEmailVerified'] ?? false;
-      String accountStatus = userData['accountStatus'] ?? 'Pending';
+      String AccountStatus = userData['accountStatus'] ?? 'Pending';
 
       if (userType == 'JobSeeker') {
         if (isEmailVerified) {
@@ -187,13 +187,13 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!isEmailVerified) {
           await _auth.signOut();
           _showErrorDialog('Please verify your email first. Check your inbox.');
-        } else if (accountStatus == 'Verified') {
+        } else if (AccountStatus == 'Verified') {
           Navigator.pushReplacementNamed(context, '/company-home');
-        } else if (accountStatus == 'Pending') {
+        } else if (AccountStatus == 'Pending') {
           await _auth.signOut();
           _showErrorDialog(
               'Your account is pending approval from admin. Please wait for confirmation.');
-        } else if (accountStatus == 'Rejected') {
+        } else if (AccountStatus == 'Rejected') {
           await _auth.signOut();
           _showErrorDialog(
               'Your account has been rejected. Please contact support.');

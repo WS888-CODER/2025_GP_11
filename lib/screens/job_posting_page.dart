@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class JobPostingPage extends StatefulWidget {
   const JobPostingPage({super.key});
@@ -11,6 +12,7 @@ class JobPostingPage extends StatefulWidget {
 
 class _JobPostingPageState extends State<JobPostingPage> {
   final _formKey = GlobalKey<FormState>();
+
   final _jobTitleController = TextEditingController();
   final _jobDescriptionController = TextEditingController();
   final _positionController = TextEditingController();
@@ -20,6 +22,52 @@ class _JobPostingPageState extends State<JobPostingPage> {
   DateTime? _startDate;
   DateTime? _endDate;
   final List<String> _requirements = [];
+
+  // ---- وضع تعديل أم إنشاء؟
+  bool _isEdit = false;
+  String? _jobId; // لو تعديل راح نستعمله
+
+  @override
+  void initState() {
+    super.initState();
+    // نقرأ الarguments بعد بناء الصفحة
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      if (args != null) {
+        _isEdit = true;
+        _jobId = args['jobId'] as String?;
+
+        _jobTitleController.text = (args['title'] ?? '') as String;
+        _positionController.text = (args['position'] ?? '') as String;
+        _specialityController.text = (args['specialty'] ?? args['speciality'] ?? '') as String;
+        _jobDescriptionController.text = (args['description'] ?? '') as String;
+
+        // requirements يمكن تجي List<String> أو List<dynamic>
+        final req = args['requirements'];
+        if (req is List) {
+          _requirements
+            ..clear()
+            ..addAll(req.map((e) => e.toString()));
+        }
+
+        // التواريخ (timeStamp/date/string)
+        DateTime? _asDate(v) {
+          if (v == null) return null;
+          if (v is Timestamp) return v.toDate();
+          if (v is DateTime) return v;
+          if (v is String && v.isNotEmpty) {
+            return DateTime.tryParse(v);
+          }
+          return null;
+        }
+
+        _startDate = _asDate(args['startDate']);
+        _endDate = _asDate(args['endDate']);
+
+        setState(() {});
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -35,13 +83,11 @@ class _JobPostingPageState extends State<JobPostingPage> {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _startDate ?? DateTime.now(),
-      firstDate: DateTime.now(),
+      firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
     if (picked != null) {
-      setState(() {
-        _startDate = picked;
-      });
+      setState(() => _startDate = picked);
     }
   }
 
@@ -53,25 +99,21 @@ class _JobPostingPageState extends State<JobPostingPage> {
       lastDate: DateTime(2100),
     );
     if (picked != null) {
-      setState(() {
-        _endDate = picked;
-      });
+      setState(() => _endDate = picked);
     }
   }
 
   void _addRequirement() {
-    if (_requirementController.text.isNotEmpty) {
+    if (_requirementController.text.trim().isNotEmpty) {
       setState(() {
-        _requirements.add(_requirementController.text);
+        _requirements.add(_requirementController.text.trim());
         _requirementController.clear();
       });
     }
   }
 
   void _removeRequirement(int index) {
-    setState(() {
-      _requirements.removeAt(index);
-    });
+    setState(() => _requirements.removeAt(index));
   }
 
   Future<void> _generateJobPost() async {
@@ -83,8 +125,8 @@ class _JobPostingPageState extends State<JobPostingPage> {
     }
 
     final skills = _requirements.join(', ');
-    final url = Uri.parse('http://10.0.2.2:5000/generateJobPost'); // Android Emulator
-    // Use http://localhost:5000 if you're running Flutter Web
+    // NOTE: استعملي localhost للويب، 10.0.2.2 لمحاكي أندرويد
+    final url = Uri.parse('http://localhost:5000/generateJobPost');
 
     try {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -101,20 +143,21 @@ class _JobPostingPageState extends State<JobPostingPage> {
         }),
       );
 
+      if (!mounted) return;
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final generatedText = data['job_post'];
+        final generatedText = data['job_post'] ?? '';
 
         final cleanedText = generatedText
-            .replaceAll(RegExp(r'\*\*'), '') // remove bold markers
-            .replaceAll(RegExp(r'\*'), '') // remove extra stars
-            .replaceAll(RegExp(r'#+'), '') // remove markdown headers
-            .replaceAll(RegExp(r'- '), '• ') // replace dashes with bullets
+            .toString()
+            .replaceAll(RegExp(r'\*\*'), '')
+            .replaceAll(RegExp(r'\*'), '')
+            .replaceAll(RegExp(r'#+'), '')
+            .replaceAll(RegExp(r'- '), '• ')
             .trim();
 
-        setState(() {
-          _jobDescriptionController.text = cleanedText;
-        });
+        setState(() => _jobDescriptionController.text = cleanedText);
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('AI job description generated!')),
@@ -125,40 +168,73 @@ class _JobPostingPageState extends State<JobPostingPage> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
     }
   }
 
-  void _submitForm() {
-    if (_formKey.currentState!.validate()) {
-      if (_requirements.isEmpty) {
+  Future<void> _submitForm() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    if (_requirements.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please add at least one requirement')),
+      );
+      return;
+    }
+
+    final data = <String, dynamic>{
+      'title': _jobTitleController.text.trim(),
+      'description': _jobDescriptionController.text.trim(),
+      'position': _positionController.text.trim(),
+      'specialty': _specialityController.text.trim(),
+      'requirements': _requirements,
+      'startDate': _startDate,
+      'endDate': _endDate,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    try {
+      final jobs = FirebaseFirestore.instance.collection('Jobs');
+
+      if (_isEdit && _jobId != null && _jobId!.isNotEmpty) {
+        // UPDATE
+        await jobs.doc(_jobId).update(data);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please add at least one requirement')),
+          const SnackBar(content: Text('Job updated successfully')),
         );
-        return;
+      } else {
+        // CREATE
+        await jobs.add({
+          ...data,
+          'createdAt': FieldValue.serverTimestamp(),
+          'status': 'Open',
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Job created successfully')),
+        );
       }
 
+      if (!mounted) return;
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Job posting created successfully')),
+        SnackBar(content: Text('Error: $e')),
       );
-
-      print('Job Title: ${_jobTitleController.text}');
-      print('Description: ${_jobDescriptionController.text}');
-      print('Requirements: $_requirements');
-      print('Position: ${_positionController.text}');
-      print('Start Date: $_startDate');
-      print('End Date: $_endDate');
-      print('Speciality: ${_specialityController.text}');
     }
   }
+
+  String _fmtDate(DateTime d) =>
+      '${d.day}/${d.month}/${d.year}';
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create Job Posting'),
+        title: Text(_isEdit ? 'Edit Job' : 'Create Job Posting'),
       ),
       body: Form(
         key: _formKey,
@@ -174,12 +250,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'This field is required';
-                }
-                return null;
-              },
+              validator: (v) => (v == null || v.isEmpty) ? 'This field is required' : null,
             ),
             const SizedBox(height: 8),
 
@@ -196,8 +267,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.white,
                   backgroundColor: const Color(0xFF49469F),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -215,12 +285,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'This field is required';
-                }
-                return null;
-              },
+              validator: (v) => (v == null || v.isEmpty) ? 'This field is required' : null,
             ),
             const SizedBox(height: 16),
 
@@ -233,12 +298,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'This field is required';
-                }
-                return null;
-              },
+              validator: (v) => (v == null || v.isEmpty) ? 'This field is required' : null,
             ),
             const SizedBox(height: 16),
 
@@ -255,13 +315,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
               minLines: 6,
               maxLines: null,
               keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'This field is required';
-                }
-                return null;
-              },
+              validator: (v) => (v == null || v.isEmpty) ? 'This field is required' : null,
             ),
             const SizedBox(height: 16),
 
@@ -277,10 +331,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
                   children: [
                     const Text(
                       'Requirements *',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     Row(
@@ -306,10 +357,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
                     ),
                     const SizedBox(height: 12),
                     if (_requirements.isEmpty)
-                      const Text(
-                        'No requirements added yet',
-                        style: TextStyle(color: Colors.grey),
-                      )
+                      const Text('No requirements added yet', style: TextStyle(color: Colors.grey))
                     else
                       ListView.builder(
                         shrinkWrap: true,
@@ -345,9 +393,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
                   suffixIcon: const Icon(Icons.calendar_today),
                 ),
                 child: Text(
-                  _startDate != null
-                      ? '${_startDate!.day}/${_startDate!.month}/${_startDate!.year}'
-                      : 'Select date',
+                  _startDate != null ? _fmtDate(_startDate!) : 'Select date',
                   style: TextStyle(
                     color: _startDate != null ? Colors.black : Colors.grey,
                   ),
@@ -368,9 +414,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
                   suffixIcon: const Icon(Icons.calendar_today),
                 ),
                 child: Text(
-                  _endDate != null
-                      ? '${_endDate!.day}/${_endDate!.month}/${_endDate!.year}'
-                      : 'Select date',
+                  _endDate != null ? _fmtDate(_endDate!) : 'Select date',
                   style: TextStyle(
                     color: _endDate != null ? Colors.black : Colors.grey,
                   ),
@@ -388,9 +432,9 @@ class _JobPostingPageState extends State<JobPostingPage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text(
-                'Create Job Posting',
-                style: TextStyle(fontSize: 16),
+              child: Text(
+                _isEdit ? 'Save changes' : 'Create Job Posting',
+                style: const TextStyle(fontSize: 16),
               ),
             ),
           ],
