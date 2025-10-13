@@ -11,16 +11,15 @@ const openai = new OpenAI({
 
 app.post("/generateJobPost", async (req, res) => {
   try {
-    const { title, company, skills } = req.body;
+    const { title } = req.body;
 
     const prompt = `
       Write a concise and professional job description (under 100 words)
-      for the position "${title}" at ${company}.
-      Focus only on:
-      - The role's main tasks (2–3 short sentences)
-      - The required skills (${skills})
+      for the position: "${title}".
+      Focus on:
+      - The role's main responsibilities (2–3 short sentences)
       - One short, inviting closing line encouraging candidates to apply.
-      Avoid all sections like About Us, Benefits, or Company Culture.
+      Provide only the description text, no headers or sections.
     `;
 
     const response = await openai.responses.create({

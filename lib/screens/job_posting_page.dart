@@ -117,16 +117,16 @@ class _JobPostingPageState extends State<JobPostingPage> {
   }
 
   Future<void> _generateJobPost() async {
-    if (_jobTitleController.text.isEmpty || _positionController.text.isEmpty) {
+    if (_jobTitleController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter job title and position first')),
+        const SnackBar(content: Text('Please enter job title first')),
       );
       return;
     }
 
-    final skills = _requirements.join(', ');
     // NOTE: استعملي localhost للويب، 10.0.2.2 لمحاكي أندرويد
-    final url = Uri.parse('http://localhost:5000/generateJobPost');
+    final url = Uri.parse('http://10.0.2.2:5000/generateJobPost');
+
 
     try {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -138,8 +138,6 @@ class _JobPostingPageState extends State<JobPostingPage> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'title': _jobTitleController.text,
-          'company': 'Jadeer',
-          'skills': skills.isNotEmpty ? skills : _specialityController.text,
         }),
       );
 
