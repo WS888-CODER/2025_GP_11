@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /* ========================== FIRESTORE CONSTANTS ========================== */
 
 const kJobsCollection = 'Jobs';
+const kUsersCollection = 'Users';
 
 class JobFields {
   static const jobId = 'JobID';
@@ -20,6 +22,11 @@ class JobFields {
   static const userId = 'UserID';
   static const company = 'Company';
   static const applyUrl = 'ApplyURL';
+}
+
+class UserFields {
+  static const name = 'Name';
+  static const userType = 'UserType';
 }
 
 /* ========================== MODEL ========================== */
@@ -70,7 +77,7 @@ class Job {
       title: (d[JobFields.title] ?? '').toString(),
       position: (d[JobFields.position] ?? '').toString(),
       keywords: asStringList(d[JobFields.keywords]),
-      postedAt: asDate(d[JobFields.startDate])!,
+      postedAt: asDate(d[JobFields.startDate]) ?? DateTime.now(),
       endDate: asDate(d[JobFields.endDate]),
       description: (d[JobFields.description] ?? '').toString(),
       status: (d[JobFields.status] ?? '').toString(),
@@ -116,6 +123,9 @@ class _JobsPageState extends State<JobsPage> {
 
   late Set<String> _saved;
   List<String> _majors = ['All'];
+
+  final Map<String, String> _companyNames = {};
+  bool _loadingCompanies = false;
 
   @override
   void initState() {
@@ -235,6 +245,40 @@ class _JobsPageState extends State<JobsPage> {
     }
   }
 
+  Future<void> _ensureCompanyNames(Set<String> uids) async {
+    final missing = uids.where((id) => !_companyNames.containsKey(id)).toList();
+    if (missing.isEmpty || _loadingCompanies) return;
+
+    setState(() => _loadingCompanies = true);
+
+    List<List<String>> chunks = [];
+    for (var i = 0; i < missing.length; i += 10) {
+      chunks.add(missing.sublist(
+          i, i + 10 > missing.length ? missing.length : i + 10));
+    }
+
+    for (final chunk in chunks) {
+      final qs = await FirebaseFirestore.instance
+          .collection(kUsersCollection)
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
+
+      for (final doc in qs.docs) {
+        final data = doc.data();
+        final name = (data[UserFields.name] ?? '').toString().trim();
+        if (name.isNotEmpty) {
+          _companyNames[doc.id] = name;
+        }
+      }
+
+      for (final id in chunk) {
+        _companyNames.putIfAbsent(id, () => 'Company');
+      }
+    }
+
+    if (mounted) setState(() => _loadingCompanies = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -313,6 +357,7 @@ class _JobsPageState extends State<JobsPage> {
 
                 final data = snap.data ?? const <Job>[];
                 _updateMajorsFrom(data);
+                _ensureCompanyNames(data.map((j) => j.userId).toSet());
 
                 final jobs = _applyFilters(data);
                 if (jobs.isEmpty) {
@@ -333,6 +378,7 @@ class _JobsPageState extends State<JobsPage> {
                   itemBuilder: (context, i) {
                     final j = jobs[i];
                     final saved = _saved.contains(j.id);
+                    final companyName = _companyNames[j.userId] ?? 'Company';
 
                     return Card(
                       elevation: 0.5,
@@ -345,7 +391,10 @@ class _JobsPageState extends State<JobsPage> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => JobDetailsPage(job: j),
+                              builder: (_) => JobDetailsPage(
+                                job: j,
+                                companyName: companyName,
+                              ),
                             ),
                           );
                         },
@@ -369,6 +418,13 @@ class _JobsPageState extends State<JobsPage> {
                                             fontSize: 16,
                                             fontWeight: FontWeight.w700,
                                           ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          companyName,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium,
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
@@ -436,7 +492,20 @@ class _JobsPageState extends State<JobsPage> {
                                     ),
                                   const Spacer(),
                                   FilledButton(
-                                    onPressed: null, // visible but disabled
+                                    onPressed: (j.applyUrl != null &&
+                                            j.applyUrl!.trim().isNotEmpty)
+                                        ? () async {
+                                            final uri =
+                                                Uri.parse(j.applyUrl!.trim());
+                                            if (await canLaunchUrl(uri)) {
+                                              await launchUrl(
+                                                uri,
+                                                mode: LaunchMode
+                                                    .externalApplication,
+                                              );
+                                            }
+                                          }
+                                        : null,
                                     child: const Text('Apply'),
                                   ),
                                 ],
@@ -477,19 +546,29 @@ class UserProfile {
 
 class JobDetailsPage extends StatelessWidget {
   final Job job;
-  const JobDetailsPage({super.key, required this.job});
+  final String? companyName;
+  const JobDetailsPage({super.key, required this.job, this.companyName});
 
   String _fmtDate(DateTime d) =>
       '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
+    final canApply = job.applyUrl != null && job.applyUrl!.trim().isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(title: Text(job.title)),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.all(12),
         child: FilledButton(
-          onPressed: null, // visible but disabled
+          onPressed: canApply
+              ? () async {
+                  final uri = Uri.parse(job.applyUrl!.trim());
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                }
+              : null,
           child: const Text('Apply'),
         ),
       ),
@@ -509,6 +588,16 @@ class JobDetailsPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if ((companyName ?? '').isNotEmpty)
+                          Text(
+                            companyName!,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        if ((companyName ?? '').isNotEmpty)
+                          const SizedBox(height: 4),
                         Text(job.position),
                         const SizedBox(height: 4),
                         Text(
