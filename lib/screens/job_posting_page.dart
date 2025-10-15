@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class JobPostingPage extends StatefulWidget {
   const JobPostingPage({super.key});
@@ -37,13 +38,14 @@ class _JobPostingPageState extends State<JobPostingPage> {
         _isEdit = true;
         _jobId = args['jobId'] as String?;
 
-        _jobTitleController.text = (args['title'] ?? '') as String;
-        _positionController.text = (args['position'] ?? '') as String;
-        _specialityController.text = (args['specialty'] ?? args['speciality'] ?? '') as String;
-        _jobDescriptionController.text = (args['description'] ?? '') as String;
+        // Read with correct Firestore field names
+        _jobTitleController.text = (args['JobTitle'] ?? args['title'] ?? '') as String;
+        _positionController.text = (args['Position'] ?? args['position'] ?? '') as String;
+        _specialityController.text = (args['Specialty'] ?? args['specialty'] ?? args['speciality'] ?? '') as String;
+        _jobDescriptionController.text = (args['JobDescription'] ?? args['description'] ?? '') as String;
 
         // requirements يمكن تجي List<String> أو List<dynamic>
-        final req = args['requirements'];
+        final req = args['Requirements'] ?? args['requirements'];
         if (req is List) {
           _requirements
             ..clear()
@@ -61,8 +63,8 @@ class _JobPostingPageState extends State<JobPostingPage> {
           return null;
         }
 
-        _startDate = _asDate(args['startDate']);
-        _endDate = _asDate(args['endDate']);
+        _startDate = _asDate(args['StartDate'] ?? args['startDate']);
+        _endDate = _asDate(args['EndDate'] ?? args['endDate']);
 
         setState(() {});
       }
@@ -83,7 +85,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _startDate ?? DateTime.now(),
-      firstDate: DateTime(2000),
+      firstDate: DateTime.now(),
       lastDate: DateTime(2100),
     );
     if (picked != null) {
@@ -116,6 +118,54 @@ class _JobPostingPageState extends State<JobPostingPage> {
     setState(() => _requirements.removeAt(index));
   }
 
+  List<String> _extractKeywords() {
+    final Set<String> keywords = {};
+
+    // Common filler words to exclude
+    final stopWords = {
+      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+      'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'be', 'been',
+      'this', 'that', 'these', 'those', 'will', 'can', 'could', 'should',
+      'would', 'may', 'must', 'have', 'has', 'had', 'do', 'does', 'did',
+    };
+
+    // Extract from title
+    final titleWords = _jobTitleController.text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty && !stopWords.contains(word.toLowerCase()))
+        .map((word) => word.toLowerCase());
+    keywords.addAll(titleWords);
+
+    // Extract from position
+    final positionWords = _positionController.text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty && !stopWords.contains(word.toLowerCase()))
+        .map((word) => word.toLowerCase());
+    keywords.addAll(positionWords);
+
+    // Extract from specialty
+    final specialtyWords = _specialityController.text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty && !stopWords.contains(word.toLowerCase()))
+        .map((word) => word.toLowerCase());
+    keywords.addAll(specialtyWords);
+
+    // Extract from requirements
+    for (final requirement in _requirements) {
+      final reqWords = requirement
+          .trim()
+          .split(RegExp(r'\s+'))
+          .where((word) => word.isNotEmpty && !stopWords.contains(word.toLowerCase()))
+          .map((word) => word.toLowerCase());
+      keywords.addAll(reqWords);
+    }
+
+    return keywords.toList();
+  }
+
   Future<void> _generateJobPost() async {
     if (_jobTitleController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -124,7 +174,21 @@ class _JobPostingPageState extends State<JobPostingPage> {
       return;
     }
 
-// Call your Cloud Function from firebase RUNNING THIS REQUIRES WIFI 
+    if (_positionController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter position first')),
+      );
+      return;
+    }
+
+    if (_specialityController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter speciality first')),
+      );
+      return;
+    }
+
+// Call your Cloud Function from firebase RUNNING THIS REQUIRES WIFI
  final url = Uri.parse('https://us-central1-jadeer-b4953.cloudfunctions.net/generateJobPost');
 
 
@@ -139,6 +203,8 @@ class _JobPostingPageState extends State<JobPostingPage> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'title': _jobTitleController.text,
+          'position': _positionController.text,
+          'speciality': _specialityController.text,
         }),
       );
 
@@ -184,32 +250,48 @@ class _JobPostingPageState extends State<JobPostingPage> {
       return;
     }
 
+    // Get current user ID
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You must be logged in to post a job')),
+      );
+      return;
+    }
+
+    final userId = currentUser.uid;
+    final keywords = _extractKeywords();
+
     final data = <String, dynamic>{
-      'title': _jobTitleController.text.trim(),
-      'description': _jobDescriptionController.text.trim(),
-      'position': _positionController.text.trim(),
-      'specialty': _specialityController.text.trim(),
-      'requirements': _requirements,
-      'startDate': _startDate,
-      'endDate': _endDate,
-      'updatedAt': FieldValue.serverTimestamp(),
+      'JobTitle': _jobTitleController.text.trim(),
+      'JobDescription': _jobDescriptionController.text.trim(),
+      'Position': _positionController.text.trim(),
+      'Specialty': _specialityController.text.trim(),
+      'Requirements': _requirements,
+      'StartDate': _startDate,
+      'EndDate': _endDate,
+      'JobKeywords': keywords,
+      'UserID': userId,
     };
 
     try {
       final jobs = FirebaseFirestore.instance.collection('Jobs');
 
       if (_isEdit && _jobId != null && _jobId!.isNotEmpty) {
-        // UPDATE
+        // UPDATE - keep existing JobID and UserID
         await jobs.doc(_jobId).update(data);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Job updated successfully')),
         );
       } else {
-        // CREATE
-        await jobs.add({
+        // CREATE - generate new JobID and use it as document ID
+        final newJobDoc = jobs.doc(); // Generate document ID
+        final jobId = newJobDoc.id;
+
+        await newJobDoc.set({
           ...data,
-          'createdAt': FieldValue.serverTimestamp(),
-          'status': 'Open',
+          'JobID': jobId,
+          'JobStatus': 'Open',
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Job created successfully')),
@@ -251,29 +333,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
               ),
               validator: (v) => (v == null || v.isEmpty) ? 'This field is required' : null,
             ),
-            const SizedBox(height: 8),
-
-            // AI Generate Button
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: _generateJobPost,
-                icon: const Icon(Icons.auto_awesome, size: 18),
-                label: const Text(
-                  'Generate with AI',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  backgroundColor: const Color(0xFF49469F),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
 
             // Position
             TextFormField(
@@ -300,6 +360,28 @@ class _JobPostingPageState extends State<JobPostingPage> {
               validator: (v) => (v == null || v.isEmpty) ? 'This field is required' : null,
             ),
             const SizedBox(height: 16),
+
+            // AI Generate Button
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _generateJobPost,
+                icon: const Icon(Icons.auto_awesome, size: 18),
+                label: const Text(
+                  'Generate with AI',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: const Color(0xFF49469F),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
 
             // Job Description
             TextFormField(

@@ -271,7 +271,7 @@ export const sendCompanyDocumentRequest = functions.https.onCall(async (data, co
 // ============================================
 export const generateJobPost = functions.https.onRequest(async (req, res) => {
   try {
-    const { title } = req.body;
+    const { title, position, speciality } = req.body;
 
     // Initialize OpenAI with environment variable (Firebase injects secret automatically)
     const openai = new OpenAI({
@@ -280,9 +280,14 @@ export const generateJobPost = functions.https.onRequest(async (req, res) => {
 
     const prompt = `
       Write a concise and professional job description (under 100 words)
-      for the position: "${title}".
+      for the following role:
+      - Job Title: "${title}"
+      - Position Level: "${position}"
+      - Speciality/Field: "${speciality}"
+
       Focus on:
-      - The role's main responsibilities (2–3 short sentences)
+      - The role's main responsibilities tailored to the position level and speciality (2–3 short sentences)
+      - Key expectations for someone in this position and speciality
       - One short, inviting closing line encouraging candidates to apply.
       Provide only the description text, no headers or sections.
     `;
