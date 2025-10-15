@@ -188,12 +188,84 @@ class _JobPostingPageState extends State<JobPostingPage> {
       return;
     }
 
-// Call your Cloud Function from firebase RUNNING THIS REQUIRES WIFI
- final url = Uri.parse('https://us-central1-jadeer-b4953.cloudfunctions.net/generateJobPost');
-
-
+    // Check if user is logged in
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You must be logged in to use AI generation')),
+      );
+      return;
+    }
 
     try {
+      // Check AI usage limit
+      final userDoc = await FirebaseFirestore.instance
+          .collection('Users')
+          .doc(currentUser.uid)
+          .get();
+
+      if (!userDoc.exists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User data not found')),
+        );
+        return;
+      }
+
+      final userData = userDoc.data() as Map<String, dynamic>;
+      final aiUsage = userData['AiUsage'] as Map<String, dynamic>?;
+
+      // Check if we need to reset daily usage
+      final lastReset = aiUsage?['LastReset'] as Timestamp?;
+      final now = DateTime.now();
+      bool needsReset = false;
+
+      if (lastReset != null) {
+        final lastResetDate = lastReset.toDate();
+        // Check if last reset was on a different day
+        needsReset = lastResetDate.year != now.year ||
+                     lastResetDate.month != now.month ||
+                     lastResetDate.day != now.day;
+      } else {
+        needsReset = true;
+      }
+
+      int jobPostingCount;
+
+      if (needsReset) {
+        // Reset JobPosting count for the new day (companies only)
+        await FirebaseFirestore.instance
+            .collection('Users')
+            .doc(currentUser.uid)
+            .update({
+          'AiUsage.LastReset': FieldValue.serverTimestamp(),
+          'AiUsage.JobPosting': 2,
+        });
+        jobPostingCount = 2;
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Daily AI usage limit has been reset!'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        jobPostingCount = (aiUsage?['JobPosting'] ?? 0) as int;
+      }
+
+      if (jobPostingCount <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You have reached your AI generation limit for job postings. Resets tomorrow!'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+
+      // Call your Cloud Function from firebase RUNNING THIS REQUIRES WIFI
+      final url = Uri.parse('https://us-central1-jadeer-b4953.cloudfunctions.net/generateJobPost');
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Generating job description...')),
       );
@@ -224,8 +296,18 @@ class _JobPostingPageState extends State<JobPostingPage> {
 
         setState(() => _jobDescriptionController.text = cleanedText);
 
+        // Decrement AI usage count
+        await FirebaseFirestore.instance
+            .collection('Users')
+            .doc(currentUser.uid)
+            .update({
+          'AiUsage.JobPosting': jobPostingCount - 1,
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI job description generated!')),
+          SnackBar(
+            content: Text('AI job description generated! (${jobPostingCount - 1} uses remaining)'),
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

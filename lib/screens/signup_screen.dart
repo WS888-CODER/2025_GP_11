@@ -270,6 +270,11 @@ class _SignupScreenState extends State<SignupScreen> {
         'AccountStatus': null,
         'IsEmailVerified': false,
         'CreatedAt': FieldValue.serverTimestamp(),
+        'AiUsage': {
+          'LastReset': FieldValue.serverTimestamp(),
+          'CvEnhancement': 2,
+          'MockInterview': 2,
+        },
       });
 
       String otp = _generateOTP();
@@ -382,6 +387,10 @@ class _SignupScreenState extends State<SignupScreen> {
         'AccountStatus': 'Pending',
         'IsEmailVerified': false,
         'CreatedAt': FieldValue.serverTimestamp(),
+        'AiUsage': {
+          'LastReset': FieldValue.serverTimestamp(),
+          'JobPosting': 2,
+        },
       });
 
       String otp = _generateOTP();
