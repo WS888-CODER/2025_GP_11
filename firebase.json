@@ -24,7 +24,7 @@
   },
   "functions": [
     {
-      "source": "functions-v2",
+      "source": "functions",
       "codebase": "default",
       "ignore": [
         "node_modules",

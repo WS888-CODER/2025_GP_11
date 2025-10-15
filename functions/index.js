@@ -1,7 +1,7 @@
-import 'dotenv/config';
 import express from "express";
 import OpenAI from "openai";
 import * as functions from "firebase-functions";
+import { defineSecret } from "firebase-functions/params";
 import admin from "firebase-admin";
 import nodemailer from "nodemailer";
 
@@ -16,10 +16,11 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-// OpenAI Client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Define OpenAI API Key as a secret
+const openaiApiKey = defineSecret("OPENAI_API_KEY");
+
+// OpenAI Client - will be initialized in the function
+let openai;
 
 // Email configuration
 const EMAIL_USER = "JadeerGp2025@gmail.com";
