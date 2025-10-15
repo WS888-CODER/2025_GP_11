@@ -83,7 +83,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _startDate ?? DateTime.now(),
-      firstDate: DateTime(2000),
+      firstDate: DateTime.now(),
       lastDate: DateTime(2100),
     );
     if (picked != null) {
@@ -124,7 +124,21 @@ class _JobPostingPageState extends State<JobPostingPage> {
       return;
     }
 
-// Call your Cloud Function from firebase RUNNING THIS REQUIRES WIFI 
+    if (_positionController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter position first')),
+      );
+      return;
+    }
+
+    if (_specialityController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter speciality first')),
+      );
+      return;
+    }
+
+// Call your Cloud Function from firebase RUNNING THIS REQUIRES WIFI
  final url = Uri.parse('https://us-central1-jadeer-b4953.cloudfunctions.net/generateJobPost');
 
 
@@ -139,6 +153,8 @@ class _JobPostingPageState extends State<JobPostingPage> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'title': _jobTitleController.text,
+          'position': _positionController.text,
+          'speciality': _specialityController.text,
         }),
       );
 
@@ -251,29 +267,7 @@ class _JobPostingPageState extends State<JobPostingPage> {
               ),
               validator: (v) => (v == null || v.isEmpty) ? 'This field is required' : null,
             ),
-            const SizedBox(height: 8),
-
-            // AI Generate Button
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: _generateJobPost,
-                icon: const Icon(Icons.auto_awesome, size: 18),
-                label: const Text(
-                  'Generate with AI',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  backgroundColor: const Color(0xFF49469F),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
 
             // Position
             TextFormField(
@@ -300,6 +294,28 @@ class _JobPostingPageState extends State<JobPostingPage> {
               validator: (v) => (v == null || v.isEmpty) ? 'This field is required' : null,
             ),
             const SizedBox(height: 16),
+
+            // AI Generate Button
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _generateJobPost,
+                icon: const Icon(Icons.auto_awesome, size: 18),
+                label: const Text(
+                  'Generate with AI',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: const Color(0xFF49469F),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
 
             // Job Description
             TextFormField(
