@@ -124,8 +124,9 @@ class _JobPostingPageState extends State<JobPostingPage> {
       return;
     }
 
-    // NOTE: استعملي localhost للويب، 10.0.2.2 لمحاكي أندرويد
-    final url = Uri.parse('http://10.0.2.2:5000/generateJobPost');
+// Call your Cloud Function from firebase RUNNING THIS REQUIRES WIFI 
+ final url = Uri.parse('https://us-central1-jadeer-b4953.cloudfunctions.net/generateJobPost');
+
 
 
     try {

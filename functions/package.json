@@ -16,7 +16,7 @@
   "dependencies": {
     "dotevn": "^0.0.1-security",
     "express": "^5.1.0",
-    "firebase-admin": "^12.7.0",
+    "firebase-admin": "^13.5.0",
     "firebase-functions": "^6.5.0",
     "nodemailer": "^7.0.9",
     "openai": "^6.3.0"
