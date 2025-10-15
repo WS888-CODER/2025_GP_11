@@ -127,6 +127,14 @@ class _JobPostingPageState extends State<JobPostingPage> {
       'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'be', 'been',
       'this', 'that', 'these', 'those', 'will', 'can', 'could', 'should',
       'would', 'may', 'must', 'have', 'has', 'had', 'do', 'does', 'did',
+      'if', 'you', 'we', 'our', 'your', 'their', 'them', 'they', 'he', 'she',
+      'it', 'us', 'not', 'no', 'yes', 'all', 'some', 'any', 'many', 'much',
+      'few', 'more', 'most', 'less', 'about', 'into', 'than', 'over', 'under',
+      'between', 'through', 'during', 'when', 'where', 'why', 'how', 'what',
+      'which', 'who', 'whom', 'whose', 'just', 'only', 'also', 'too', 'very',
+      'quite', 'get', 'got', 'make', 'made', 'such', 'each', 'other', 'both',
+      'either', 'neither', 'whether', 'while', 'until', 'since', 'after',
+      'before', 'above', 'below', 'out', 'up', 'down', 'off', 'here', 'there',
     };
 
     // Extract from title
@@ -152,6 +160,14 @@ class _JobPostingPageState extends State<JobPostingPage> {
         .where((word) => word.isNotEmpty && !stopWords.contains(word.toLowerCase()))
         .map((word) => word.toLowerCase());
     keywords.addAll(specialtyWords);
+
+    // Extract from job description
+    final descriptionWords = _jobDescriptionController.text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty && !stopWords.contains(word.toLowerCase()))
+        .map((word) => word.toLowerCase());
+    keywords.addAll(descriptionWords);
 
     // Extract from requirements
     for (final requirement in _requirements) {
