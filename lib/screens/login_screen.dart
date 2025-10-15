@@ -32,12 +32,19 @@ class _LoginScreenState extends State<LoginScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Error'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.red, size: 28),
+            SizedBox(width: 10),
+            Text('Error', style: TextStyle(color: Colors.red)),
+          ],
+        ),
         content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('OK'),
+            child: Text('OK', style: TextStyle(color: Color(0xFF4A5FBC))),
           ),
         ],
       ),
@@ -50,6 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
         content: Text(message),
         backgroundColor: Colors.green,
         behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
@@ -77,11 +85,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       print('🔵 Cloud Function response: ${result.data}');
 
-      // ✅ تحقق من الـ response
       if (result.data != null && result.data['success'] == true) {
         print('✅ Cloud Function returned success!');
 
-        // ✅ حفظ OTP في AdminOTPs collection
         await _firestore.collection('AdminOTPs').doc(email).set({
           'OTP': otp,
           'Email': email,
@@ -173,8 +179,11 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      bool isEmailVerified = userData['isEmailVerified'] ?? false;
-      String AccountStatus = userData['accountStatus'] ?? 'Pending';
+      // ✅ تصليح مشكلة AccountStatus
+      bool isEmailVerified =
+          userData['IsEmailVerified'] ?? userData['isEmailVerified'] ?? false;
+      String accountStatus =
+          userData['AccountStatus'] ?? userData['accountStatus'] ?? 'Pending';
 
       if (userType == 'JobSeeker') {
         if (isEmailVerified) {
@@ -187,13 +196,13 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!isEmailVerified) {
           await _auth.signOut();
           _showErrorDialog('Please verify your email first. Check your inbox.');
-        } else if (AccountStatus == 'Verified') {
+        } else if (accountStatus == 'Verified') {
           Navigator.pushReplacementNamed(context, '/company-home');
-        } else if (AccountStatus == 'Pending') {
+        } else if (accountStatus == 'Pending') {
           await _auth.signOut();
           _showErrorDialog(
               'Your account is pending approval from admin. Please wait for confirmation.');
-        } else if (AccountStatus == 'Rejected') {
+        } else if (accountStatus == 'Rejected') {
           await _auth.signOut();
           _showErrorDialog(
               'Your account has been rejected. Please contact support.');
@@ -249,11 +258,28 @@ class _LoginScreenState extends State<LoginScreen> {
                 SizedBox(height: 20),
                 Image.asset(
                   'assets/images/logo.jpg',
-                  width: 200,
-                  height: 100,
+                  height: 120,
+                  width: 120,
                   fit: BoxFit.contain,
                 ),
-                SizedBox(height: 60),
+                SizedBox(height: 30),
+                Text(
+                  'Welcome Back',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF4A5FBC),
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Login to continue',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                SizedBox(height: 40),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -338,7 +364,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         onPressed: () {
                           setState(() {
-                            _obscurePassword = !_obscurePassword;
+                            _obscurePassword = !_obscurePassword; // ✅ مصلح
                           });
                         },
                       ),
@@ -349,6 +375,23 @@ class _LoginScreenState extends State<LoginScreen> {
                       }
                       return null;
                     },
+                  ),
+                ),
+                SizedBox(height: 16),
+                // ✅ زر Forgot Password
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: GestureDetector(
+                    onTap: () =>
+                        Navigator.pushNamed(context, '/forgot-password'),
+                    child: Text(
+                      'Forgot Password?',
+                      style: TextStyle(
+                        color: Color(0xFF4A5FBC),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
                   ),
                 ),
                 SizedBox(height: 40),
@@ -393,6 +436,28 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 SizedBox(height: 20),
+                // ✅ لينك للذهاب إلى Signup
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Don\'t have an account? ',
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                    GestureDetector(
+                      onTap: () =>
+                          Navigator.pushReplacementNamed(context, '/signup'),
+                      child: Text(
+                        'Sign Up',
+                        style: TextStyle(
+                          color: Color(0xFF4A5FBC),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 40),
               ],
             ),
           ),

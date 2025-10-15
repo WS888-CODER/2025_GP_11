@@ -10,7 +10,8 @@ import 'package:gp_2025_11/screens/company_home.dart';
 import 'package:gp_2025_11/screens/admin_dashboard.dart';
 import 'package:gp_2025_11/screens/job_posting_page.dart';
 import 'package:gp_2025_11/screens/signup_screen.dart';
-import 'package:gp_2025_11/screens/otp_verification_screen.dart'; // ← ضيفي هذا السطر
+import 'package:gp_2025_11/screens/otp_verification_screen.dart';
+import 'package:gp_2025_11/screens/forgot_password_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,6 +42,7 @@ class Jadeer extends StatelessWidget {
         '/otp-verification': (context) => OTPVerificationScreen(),
         '/admin-dashboard': (context) => AdminDashboard(),
         '/job-posting': (context) => const JobPostingPage(),
+        '/forgot-password': (context) => ForgotPasswordScreen(),
       },
     );
   }

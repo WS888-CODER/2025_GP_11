@@ -18,12 +18,16 @@ class _SignupScreenState extends State<SignupScreen> {
   final _companyFullNameController = TextEditingController();
   final _companyEmailController = TextEditingController();
   final _companyPasswordController = TextEditingController();
+  final _companyConfirmPasswordController = TextEditingController(); // ✅ جديد
+
   final _seekerNameController = TextEditingController();
   final _seekerEmailController = TextEditingController();
   final _seekerPasswordController = TextEditingController();
+  final _seekerConfirmPasswordController = TextEditingController(); // ✅ جديد
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true; // ✅ جديد
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -34,9 +38,12 @@ class _SignupScreenState extends State<SignupScreen> {
     _companyFullNameController.dispose();
     _companyEmailController.dispose();
     _companyPasswordController.dispose();
+    _companyConfirmPasswordController.dispose(); // ✅ جديد
+
     _seekerNameController.dispose();
     _seekerEmailController.dispose();
     _seekerPasswordController.dispose();
+    _seekerConfirmPasswordController.dispose(); // ✅ جديد
     super.dispose();
   }
 
@@ -44,12 +51,19 @@ class _SignupScreenState extends State<SignupScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Error'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.red, size: 28),
+            SizedBox(width: 10),
+            Text('Error', style: TextStyle(color: Colors.red)),
+          ],
+        ),
         content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('OK'),
+            child: Text('OK', style: TextStyle(color: Color(0xFF4A5FBC))),
           ),
         ],
       ),
@@ -212,6 +226,14 @@ class _SignupScreenState extends State<SignupScreen> {
         return;
       }
 
+      // ✅ التحقق من تطابق كلمات السر
+      if (_seekerPasswordController.text !=
+          _seekerConfirmPasswordController.text) {
+        _showErrorDialog('Passwords do not match');
+        setState(() => _isLoading = false);
+        return;
+      }
+
       // Check email uniqueness
       bool isUnique = await _isEmailUnique(_seekerEmailController.text.trim());
       if (!isUnique) {
@@ -311,6 +333,14 @@ class _SignupScreenState extends State<SignupScreen> {
       if (!_isStrongPassword(_companyPasswordController.text)) {
         _showErrorDialog(
             _getPasswordRequirements(_companyPasswordController.text));
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // ✅ التحقق من تطابق كلمات السر
+      if (_companyPasswordController.text !=
+          _companyConfirmPasswordController.text) {
+        _showErrorDialog('Passwords do not match');
         setState(() => _isLoading = false);
         return;
       }
@@ -439,6 +469,12 @@ class _SignupScreenState extends State<SignupScreen> {
         ),
         SizedBox(height: 24),
         _buildPasswordField(_companyPasswordController),
+        SizedBox(height: 24), // ✅ جديد
+        _buildConfirmPasswordField(
+          // ✅ جديد
+          _companyPasswordController,
+          _companyConfirmPasswordController,
+        ),
         SizedBox(height: 40),
         _buildSignUpButton(_handleCompanySignup),
       ],
@@ -472,6 +508,12 @@ class _SignupScreenState extends State<SignupScreen> {
         ),
         SizedBox(height: 24),
         _buildPasswordField(_seekerPasswordController),
+        SizedBox(height: 24), // ✅ جديد
+        _buildConfirmPasswordField(
+          // ✅ جديد
+          _seekerPasswordController,
+          _seekerConfirmPasswordController,
+        ),
         SizedBox(height: 40),
         _buildSignUpButton(_handleJobSeekerSignup),
       ],
@@ -569,6 +611,57 @@ class _SignupScreenState extends State<SignupScreen> {
               fontSize: 12,
               color: Colors.grey[600],
               fontStyle: FontStyle.italic),
+        ),
+      ],
+    );
+  }
+
+  // ✅ دالة جديدة لبناء Confirm Password Field
+  Widget _buildConfirmPasswordField(TextEditingController passwordController,
+      TextEditingController confirmPasswordController) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Confirm Password',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFFFF7B7B),
+          ),
+        ),
+        SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Color(0xFF4A5FBC), width: 2),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: TextFormField(
+            controller: confirmPasswordController,
+            obscureText: _obscureConfirmPassword,
+            decoration: InputDecoration(
+              hintText: 'Re-enter your password',
+              hintStyle: TextStyle(color: Colors.grey[400]),
+              border: InputBorder.none,
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscureConfirmPassword
+                      ? Icons.visibility_off
+                      : Icons.visibility,
+                  color: Color(0xFF4A5FBC),
+                ),
+                onPressed: () => setState(
+                    () => _obscureConfirmPassword = !_obscureConfirmPassword),
+              ),
+            ),
+            validator: (v) {
+              if (v == null || v.isEmpty) return 'Required';
+              if (v != passwordController.text) return 'Passwords do not match';
+              return null;
+            },
+          ),
         ),
       ],
     );
