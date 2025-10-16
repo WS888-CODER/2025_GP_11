@@ -32,7 +32,10 @@ class _JobPostingPageState extends State<JobPostingPage> {
   void initState() {
     super.initState();
     // نقرأ الarguments بعد بناء الصفحة
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Security check: Verify user is a verified company
+      await _verifyUserAccess();
+
       final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       if (args != null) {
         _isEdit = true;
@@ -68,6 +71,65 @@ class _JobPostingPageState extends State<JobPostingPage> {
 
         setState(() {});
       }
+    });
+  }
+
+  Future<void> _verifyUserAccess() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    if (currentUser == null) {
+      _showErrorAndGoBack('You must be logged in to access this page');
+      return;
+    }
+
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('Users')
+          .doc(currentUser.uid)
+          .get();
+
+      if (!userDoc.exists) {
+        _showErrorAndGoBack('User data not found');
+        return;
+      }
+
+      final userData = userDoc.data() as Map<String, dynamic>;
+      final userType = userData['UserType'] ?? '';
+      final accountStatus = userData['AccountStatus'] ?? '';
+
+      // Check if user is a Company
+      if (userType != 'Company') {
+        _showErrorAndGoBack('Only companies can create job postings');
+        return;
+      }
+
+      // Check if company account is Verified
+      if (accountStatus != 'Verified') {
+        if (accountStatus == 'Pending') {
+          _showErrorAndGoBack('Your company account is pending approval. Please wait for admin verification.');
+        } else if (accountStatus == 'Rejected') {
+          _showErrorAndGoBack('Your company account has been rejected. Please contact support.');
+        } else {
+          _showErrorAndGoBack('Your company account is not verified. Please contact support.');
+        }
+        return;
+      }
+    } catch (e) {
+      _showErrorAndGoBack('Error verifying access: $e');
+    }
+  }
+
+  void _showErrorAndGoBack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted) Navigator.pop(context);
     });
   }
 
