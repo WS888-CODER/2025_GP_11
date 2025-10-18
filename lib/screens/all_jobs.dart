@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /* ========================== FIRESTORE CONSTANTS ========================== */
@@ -25,9 +26,12 @@ class JobFields {
   static const applyUrl = 'ApplyURL';
 }
 
-class UserFields {
-  static const name = 'Name';
+class UserDocFields {
   static const userType = 'UserType';
+  static const isProfileComplete = 'IsProfileComplete';
+  static const cvUrl = 'CVURL';
+  static const major = 'Major';
+  static const name = 'Name';
 }
 
 /* ========================== MODEL ========================== */
@@ -129,32 +133,68 @@ class _JobsPageState extends State<JobsPage> {
   final Map<String, String> _companyNames = {};
   bool _loadingCompanies = false;
 
-  StreamSubscription<List<Job>>? _sub;
+  String _userType = 'JobSeeker';
+  bool _isProfileComplete = false;
+  UserProfile? _liveProfile;
+
+  StreamSubscription<List<Job>>? _jobsSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userSub;
 
   @override
   void initState() {
     super.initState();
     _saved = {...widget.profile.savedJobIds};
-    _sub = _jobsStream().listen(
-      (jobs) {
-        _updateMajorsFrom(jobs);
-        _ensureCompanyNames(jobs.map((j) => j.userId).toSet());
+
+    _jobsSub = _jobsStream().listen((jobs) {
+      _updateMajorsFrom(jobs);
+      _ensureCompanyNames(jobs.map((j) => j.userId).toSet());
+      if (!mounted) return;
+      setState(() {
+        _allJobs = jobs;
+      });
+    });
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      _userSub = FirebaseFirestore.instance
+          .collection(kUsersCollection)
+          .doc(uid)
+          .snapshots()
+          .listen((doc) {
+        final d = doc.data() ?? {};
+        final type = (d[UserDocFields.userType] ?? 'JobSeeker').toString();
+        final complete = d[UserDocFields.isProfileComplete] == true;
+        final cv = (d[UserDocFields.cvUrl] ?? '').toString();
+        final mj = (d[UserDocFields.major] ?? '').toString();
+
         if (!mounted) return;
         setState(() {
-          _allJobs = jobs;
+          _userType = type;
+          _isProfileComplete = complete;
+          _liveProfile = UserProfile(
+            cvUrl: cv.isEmpty ? null : cv,
+            major: mj.isEmpty ? null : mj,
+            hasMinimumInfo: complete,
+            savedJobIds: _saved,
+          );
         });
-      },
-      onError: (e) {
-        // Optional: handle/log errors
-      },
-    );
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _maybeShowProfileBanner();
+        });
+      });
+    }
   }
 
   @override
   void dispose() {
-    _sub?.cancel();
+    _jobsSub?.cancel();
+    _userSub?.cancel();
     super.dispose();
   }
+
+  UserProfile get _profile => _liveProfile ?? widget.profile;
 
   String _fmtDate(DateTime d) =>
       '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
@@ -186,10 +226,10 @@ class _JobsPageState extends State<JobsPage> {
     }
 
     if (_forYou) {
-      if (widget.profile.cvUrl == null) {
+      if (_profile.cvUrl == null) {
         res = const <Job>[];
       } else {
-        final userMajor = widget.profile.major;
+        final userMajor = _profile.major;
         if (userMajor != null && userMajor.isNotEmpty) {
           res = res.where((j) => _matchesMajor(j, userMajor));
         }
@@ -219,8 +259,40 @@ class _JobsPageState extends State<JobsPage> {
     });
   }
 
+  void _maybeShowProfileBanner() {
+    final need = !_isProfileComplete;
+    if (!need) {
+      ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showMaterialBanner(
+      MaterialBanner(
+        content: const Text('Complete your profile to get better matches.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+              if (_userType == 'Company') {
+                Navigator.pushNamed(context, '/profile/company');
+              } else {
+                Navigator.pushNamed(context, '/profile/jobseeker');
+              }
+            },
+            child: const Text('Open Profile'),
+          ),
+          TextButton(
+            onPressed: () =>
+                ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+            child: const Text('Later'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _maybeShowCvBanner() {
-    if (_forYou && widget.profile.cvUrl == null) {
+    if (_forYou && _profile.cvUrl == null) {
       ScaffoldMessenger.of(context).showMaterialBanner(
         MaterialBanner(
           content: const Text(
@@ -230,8 +302,9 @@ class _JobsPageState extends State<JobsPage> {
             TextButton(
               onPressed: () {
                 ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+                Navigator.pushNamed(context, '/profile/jobseeker');
               },
-              child: const Text('Upload CV'),
+              child: const Text('Open Profile'),
             ),
             TextButton(
               onPressed: () {
@@ -284,7 +357,7 @@ class _JobsPageState extends State<JobsPage> {
 
       for (final doc in qs.docs) {
         final data = doc.data();
-        final name = (data[UserFields.name] ?? '').toString().trim();
+        final name = (data[UserDocFields.name] ?? '').toString().trim();
         if (name.isNotEmpty) {
           _companyNames[doc.id] = name;
         }
@@ -371,7 +444,7 @@ class _JobsPageState extends State<JobsPage> {
                 if (_allJobs.isEmpty) {
                   return Center(
                     child: Text(
-                      _forYou && widget.profile.cvUrl == null
+                      _forYou && _profile.cvUrl == null
                           ? 'Upload your CV to see personalized jobs.'
                           : 'No jobs available.',
                       style: Theme.of(context).textTheme.titleMedium,
@@ -382,7 +455,7 @@ class _JobsPageState extends State<JobsPage> {
                 if (jobs.isEmpty) {
                   return Center(
                     child: Text(
-                      _forYou && widget.profile.cvUrl == null
+                      _forYou && _profile.cvUrl == null
                           ? 'Upload your CV to see personalized jobs.'
                           : 'No jobs match your filters.',
                       style: Theme.of(context).textTheme.titleMedium,
@@ -460,9 +533,11 @@ class _JobsPageState extends State<JobsPage> {
                                     tooltip: saved
                                         ? 'Remove from saved'
                                         : 'Save for later',
-                                    icon: Icon(saved
-                                        ? Icons.favorite
-                                        : Icons.favorite_border),
+                                    icon: Icon(
+                                      saved
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
+                                    ),
                                     onPressed: () => _toggleSave(j),
                                   ),
                                 ],
@@ -487,7 +562,9 @@ class _JobsPageState extends State<JobsPage> {
                                   if (j.specialty.isNotEmpty)
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 4),
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(8),
                                         color: Theme.of(context)
@@ -514,9 +591,11 @@ class _JobsPageState extends State<JobsPage> {
                                             final uri =
                                                 Uri.parse(j.applyUrl!.trim());
                                             if (await canLaunchUrl(uri)) {
-                                              await launchUrl(uri,
-                                                  mode: LaunchMode
-                                                      .externalApplication);
+                                              await launchUrl(
+                                                uri,
+                                                mode: LaunchMode
+                                                    .externalApplication,
+                                              );
                                             }
                                           }
                                         : null,
@@ -540,7 +619,7 @@ class _JobsPageState extends State<JobsPage> {
   }
 }
 
-/* ========================== PROFILE ========================== */
+/* ========================== PROFILE SNAPSHOT MODEL ========================== */
 
 class UserProfile {
   final String? cvUrl;
