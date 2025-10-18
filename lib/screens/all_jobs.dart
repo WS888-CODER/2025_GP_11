@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -123,14 +124,36 @@ class _JobsPageState extends State<JobsPage> {
 
   late Set<String> _saved;
   List<String> _majors = ['All'];
+  List<Job> _allJobs = [];
 
   final Map<String, String> _companyNames = {};
   bool _loadingCompanies = false;
+
+  StreamSubscription<List<Job>>? _sub;
 
   @override
   void initState() {
     super.initState();
     _saved = {...widget.profile.savedJobIds};
+    _sub = _jobsStream().listen(
+      (jobs) {
+        _updateMajorsFrom(jobs);
+        _ensureCompanyNames(jobs.map((j) => j.userId).toSet());
+        if (!mounted) return;
+        setState(() {
+          _allJobs = jobs;
+        });
+      },
+      onError: (e) {
+        // Optional: handle/log errors
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
   }
 
   String _fmtDate(DateTime d) =>
@@ -234,13 +257,12 @@ class _JobsPageState extends State<JobsPage> {
     final next = set.toList();
 
     if (!listEquals(next, _majors)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
+      if (!mounted) return;
+      setState(() {
         _majors = next;
         if (!_majors.contains(_selectedMajor)) {
           _selectedMajor = 'All';
         }
-        setState(() {});
       });
     }
   }
@@ -249,15 +271,12 @@ class _JobsPageState extends State<JobsPage> {
     final missing = uids.where((id) => !_companyNames.containsKey(id)).toList();
     if (missing.isEmpty || _loadingCompanies) return;
 
+    if (!mounted) return;
     setState(() => _loadingCompanies = true);
 
-    List<List<String>> chunks = [];
     for (var i = 0; i < missing.length; i += 10) {
-      chunks.add(missing.sublist(
-          i, i + 10 > missing.length ? missing.length : i + 10));
-    }
-
-    for (final chunk in chunks) {
+      final chunk =
+          missing.sublist(i, i + 10 > missing.length ? missing.length : i + 10);
       final qs = await FirebaseFirestore.instance
           .collection(kUsersCollection)
           .where(FieldPath.documentId, whereIn: chunk)
@@ -270,17 +289,19 @@ class _JobsPageState extends State<JobsPage> {
           _companyNames[doc.id] = name;
         }
       }
-
       for (final id in chunk) {
         _companyNames.putIfAbsent(id, () => 'Company');
       }
     }
 
-    if (mounted) setState(() => _loadingCompanies = false);
+    if (!mounted) return;
+    setState(() => _loadingCompanies = false);
   }
 
   @override
   Widget build(BuildContext context) {
+    final jobs = _applyFilters(_allJobs);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Jobs'),
@@ -345,21 +366,19 @@ class _JobsPageState extends State<JobsPage> {
           ),
           const Divider(height: 1),
           Expanded(
-            child: StreamBuilder<List<Job>>(
-              stream: _jobsStream(),
-              builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snap.hasError) {
-                  return Center(child: Text('Error: ${snap.error}'));
+            child: Builder(
+              builder: (_) {
+                if (_allJobs.isEmpty) {
+                  return Center(
+                    child: Text(
+                      _forYou && widget.profile.cvUrl == null
+                          ? 'Upload your CV to see personalized jobs.'
+                          : 'No jobs available.',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  );
                 }
 
-                final data = snap.data ?? const <Job>[];
-                _updateMajorsFrom(data);
-                _ensureCompanyNames(data.map((j) => j.userId).toSet());
-
-                final jobs = _applyFilters(data);
                 if (jobs.isEmpty) {
                   return Center(
                     child: Text(
@@ -429,9 +448,9 @@ class _JobsPageState extends State<JobsPage> {
                                         const SizedBox(height: 2),
                                         Text(
                                           'Posted: ${_fmtDate(j.postedAt)}',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodySmall,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
                                         ),
                                       ],
                                     ),
@@ -441,11 +460,9 @@ class _JobsPageState extends State<JobsPage> {
                                     tooltip: saved
                                         ? 'Remove from saved'
                                         : 'Save for later',
-                                    icon: Icon(
-                                      saved
-                                          ? Icons.favorite
-                                          : Icons.favorite_border,
-                                    ),
+                                    icon: Icon(saved
+                                        ? Icons.favorite
+                                        : Icons.favorite_border),
                                     onPressed: () => _toggleSave(j),
                                   ),
                                 ],
@@ -470,22 +487,21 @@ class _JobsPageState extends State<JobsPage> {
                                   if (j.specialty.isNotEmpty)
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
+                                          horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(8),
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.primary.withOpacity(.08),
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary
+                                            .withOpacity(.08),
                                       ),
                                       child: Text(
                                         j.specialty,
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.primary,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -498,11 +514,9 @@ class _JobsPageState extends State<JobsPage> {
                                             final uri =
                                                 Uri.parse(j.applyUrl!.trim());
                                             if (await canLaunchUrl(uri)) {
-                                              await launchUrl(
-                                                uri,
-                                                mode: LaunchMode
-                                                    .externalApplication,
-                                              );
+                                              await launchUrl(uri,
+                                                  mode: LaunchMode
+                                                      .externalApplication);
                                             }
                                           }
                                         : null,

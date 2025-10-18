@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:gp_2025_11/screens/all_jobs.dart';
+import 'package:gp_2025_11/screens/company_profile_page.dart';
+import 'package:gp_2025_11/screens/job_seeker_profile_page.dart';
 import 'firebase_options.dart';
 import 'package:gp_2025_11/config/theme.dart';
 import 'package:gp_2025_11/screens/start_screen.dart';
@@ -43,6 +45,8 @@ class Jadeer extends StatelessWidget {
         '/admin-dashboard': (context) => AdminDashboard(),
         '/job-posting': (context) => const JobPostingPage(),
         '/forgot-password': (context) => ForgotPasswordScreen(),
+        '/profile/jobseeker': (context) => const JobSeekerProfileLite(),
+        '/profile/company': (context) => const CompanyProfileLite(),
       },
     );
   }
