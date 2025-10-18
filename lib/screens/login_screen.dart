@@ -1,9 +1,8 @@
-// lib/screens/login_screen.dart
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'dart:math';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -34,7 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
-          children: [
+          children: const [
             Icon(Icons.error_outline, color: Colors.red, size: 28),
             SizedBox(width: 10),
             Text('Error', style: TextStyle(color: Colors.red)),
@@ -44,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('OK', style: TextStyle(color: Color(0xFF4A5FBC))),
+            child: const Text('OK', style: TextStyle(color: Color(0xFF4A5FBC))),
           ),
         ],
       ),
@@ -63,176 +62,141 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   String _generateOTP() {
-    Random random = Random();
+    final random = Random();
     return (100000 + random.nextInt(900000)).toString();
   }
 
   Future<bool> _sendOTPEmail(String email, String otp) async {
     try {
-      print('🔵 Starting to send OTP...');
-      print('🔵 Email: $email');
-      print('🔵 OTP: $otp');
-
       final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
       final callable = functions.httpsCallable('sendAdminOtp');
-
-      print('🔵 Calling Cloud Function...');
 
       final result = await callable.call({
         'email': email.trim(),
         'otp': otp.trim(),
       });
 
-      print('🔵 Cloud Function response: ${result.data}');
-
       if (result.data != null && result.data['success'] == true) {
-        print('✅ Cloud Function returned success!');
-
         await _firestore.collection('AdminOTPs').doc(email).set({
           'OTP': otp,
           'Email': email,
           'CreatedAt': FieldValue.serverTimestamp(),
           'ExpiresAt': Timestamp.fromDate(
-            DateTime.now().add(Duration(minutes: 2)),
+            DateTime.now().add(const Duration(minutes: 2)),
           ),
           'Used': false,
         });
-
-        print('✅ OTP saved to Firestore!');
         return true;
-      } else {
-        print('⚠️ Unexpected response format: ${result.data}');
-        return false;
       }
-    } catch (e) {
-      print('❌ FULL ERROR: $e');
-      print('❌ Error type: ${e.runtimeType}');
-
-      if (e is FirebaseFunctionsException) {
-        print('❌ Code: ${e.code}');
-        print('❌ Message: ${e.message}');
-        print('❌ Details: ${e.details}');
-      }
-
+      return false;
+    } catch (_) {
       return false;
     }
   }
 
   Future<void> _handleLogin() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+      final userCredential = await _auth.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
-      String userId = userCredential.user!.uid;
+      final userId = userCredential.user!.uid;
 
-      DocumentSnapshot userDoc =
-          await _firestore.collection('Users').doc(userId).get();
-
+      final userDoc = await _firestore.collection('Users').doc(userId).get();
       if (!userDoc.exists) {
         await _auth.signOut();
         _showErrorDialog('User data not found');
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
         return;
       }
 
-      Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
-      String userType = userData['UserType'] ?? userData['userType'] ?? '';
+      final data = userDoc.data() as Map<String, dynamic>;
+      final userType = data['UserType'] ?? data['userType'] ?? '';
 
-      print('🟢 User Type: $userType');
+      final isEmailVerified =
+          data['IsEmailVerified'] ?? data['isEmailVerified'] ?? false;
+      final accountStatus =
+          data['AccountStatus'] ?? data['accountStatus'] ?? 'Pending';
 
+      // Admin → OTP
       if (userType == 'Admin') {
-        print('🟢 Admin detected! Sending OTP...');
-        String otp = _generateOTP();
-        bool otpSent = await _sendOTPEmail(_emailController.text.trim(), otp);
-
-        if (otpSent) {
+        final otp = _generateOTP();
+        final ok = await _sendOTPEmail(_emailController.text.trim(), otp);
+        if (ok) {
           _showSuccessSnackBar('✅ Verification code sent to your email');
-
           Navigator.pushReplacementNamed(
             context,
             '/otp-verification',
-            arguments: {
-              'email': _emailController.text.trim(),
-              'userId': userId,
-            },
+            arguments: {'email': _emailController.text.trim(), 'userId': userId},
           );
         } else {
           await _auth.signOut();
           _showErrorDialog(
-              'Failed to send verification code. Please check your internet connection and try again.');
+              'Failed to send verification code. Please try again later.');
         }
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
         return;
       }
 
-      // ✅ تصليح مشكلة AccountStatus
-      bool isEmailVerified =
-          userData['IsEmailVerified'] ?? userData['isEmailVerified'] ?? false;
-      String accountStatus =
-          userData['AccountStatus'] ?? userData['accountStatus'] ?? 'Pending';
-
+      // JobSeeker
       if (userType == 'JobSeeker') {
         if (isEmailVerified) {
-          Navigator.pushReplacementNamed(context, '/jobseeker-home');
+          Navigator.pushReplacementNamed(
+            context,
+            '/jobseeker-home',
+            arguments: {'userId': userId},
+          );
         } else {
           await _auth.signOut();
           _showErrorDialog('Please verify your email first. Check your inbox.');
         }
-      } else if (userType == 'Company') {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // Company
+      if (userType == 'Company') {
         if (!isEmailVerified) {
           await _auth.signOut();
           _showErrorDialog('Please verify your email first. Check your inbox.');
         } else if (accountStatus == 'Verified') {
-          Navigator.pushReplacementNamed(context, '/company-home');
+          Navigator.pushReplacementNamed(
+            context,
+            '/company-home',
+            arguments: {'companyId': userId},
+          );
         } else if (accountStatus == 'Pending') {
           await _auth.signOut();
           _showErrorDialog(
-              'Your account is pending approval from admin. Please wait for confirmation.');
+              'Your account is pending approval from admin. Please wait.');
         } else if (accountStatus == 'Rejected') {
           await _auth.signOut();
-          _showErrorDialog(
-              'Your account has been rejected. Please contact support.');
+          _showErrorDialog('Your account has been rejected. Contact support.');
         }
-      } else {
-        await _auth.signOut();
-        _showErrorDialog('Unknown user type: "$userType"');
+        setState(() => _isLoading = false);
+        return;
       }
+
+      // Unknown
+      await _auth.signOut();
+      _showErrorDialog('Unknown user type: "$userType"');
     } on FirebaseAuthException catch (e) {
-      String errorMessage = 'An error occurred during login';
-
-      if (e.code == 'user-not-found') {
-        errorMessage = 'Email not registered';
-      } else if (e.code == 'wrong-password') {
-        errorMessage = 'Incorrect password';
-      } else if (e.code == 'invalid-email') {
-        errorMessage = 'Invalid email format';
-      } else if (e.code == 'user-disabled') {
-        errorMessage = 'This account has been disabled';
-      } else if (e.code == 'invalid-credential') {
-        errorMessage = 'Invalid email or password';
-      }
-
-      _showErrorDialog(errorMessage);
+      var msg = 'An error occurred during login';
+      if (e.code == 'user-not-found') msg = 'Email not registered';
+      else if (e.code == 'wrong-password') msg = 'Incorrect password';
+      else if (e.code == 'invalid-email') msg = 'Invalid email format';
+      else if (e.code == 'user-disabled') msg = 'This account has been disabled';
+      else if (e.code == 'invalid-credential') msg = 'Invalid email or password';
+      _showErrorDialog(msg);
     } catch (e) {
-      _showErrorDialog('Unexpected error: ${e.toString()}');
+      _showErrorDialog('Unexpected error: $e');
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
 
@@ -244,60 +208,45 @@ class _LoginScreenState extends State<LoginScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Color(0xFF4A5FBC)),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF4A5FBC)),
           onPressed: () => Navigator.pop(context),
         ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Form(
             key: _formKey,
             child: Column(
               children: [
-                SizedBox(height: 20),
-                Image.asset(
-                  'assets/images/logo.jpg',
-                  height: 120,
-                  width: 120,
-                  fit: BoxFit.contain,
-                ),
-                SizedBox(height: 30),
-                Text(
-                  'Welcome Back',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF4A5FBC),
-                  ),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Login to continue',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                SizedBox(height: 40),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Email',
+                const SizedBox(height: 20),
+                Image.asset('assets/images/logo.jpg',
+                    height: 120, width: 120, fit: BoxFit.contain),
+                const SizedBox(height: 30),
+                const Text('Welcome Back',
                     style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFFFF7B7B),
-                    ),
-                  ),
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF4A5FBC),
+                    )),
+                const SizedBox(height: 8),
+                Text('Login to continue',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600])),
+                const SizedBox(height: 40),
+
+                // Email
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Email',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFFF7B7B))),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Container(
                   decoration: BoxDecoration(
-                    border: Border.all(
-                      color: Color(0xFF4A5FBC),
-                      width: 2,
-                    ),
+                    border: Border.all(color: Color(0xFF4A5FBC), width: 2),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: TextFormField(
@@ -307,41 +256,32 @@ class _LoginScreenState extends State<LoginScreen> {
                       hintText: 'Enter your email',
                       hintStyle: TextStyle(color: Colors.grey[400]),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 16,
-                      ),
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                     ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter your email';
-                      }
-                      if (!value.contains('@')) {
-                        return 'Please enter a valid email';
-                      }
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Please enter your email';
+                      if (!v.contains('@')) return 'Please enter a valid email';
                       return null;
                     },
                   ),
                 ),
-                SizedBox(height: 24),
-                Align(
+
+                const SizedBox(height: 24),
+
+                // Password
+                const Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Password',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFFFF7B7B),
-                    ),
-                  ),
+                  child: Text('Password',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFFF7B7B))),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Container(
                   decoration: BoxDecoration(
-                    border: Border.all(
-                      color: Color(0xFF4A5FBC),
-                      width: 2,
-                    ),
+                    border: Border.all(color: Color(0xFF4A5FBC), width: 2),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: TextFormField(
@@ -351,113 +291,96 @@ class _LoginScreenState extends State<LoginScreen> {
                       hintText: 'Enter your password',
                       hintStyle: TextStyle(color: Colors.grey[400]),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 16,
-                      ),
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscurePassword
                               ? Icons.visibility_off
                               : Icons.visibility,
-                          color: Color(0xFF4A5FBC),
+                          color: const Color(0xFF4A5FBC),
                         ),
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword; // ✅ مصلح
-                          });
-                        },
+                        onPressed: () =>
+                            setState(() => _obscurePassword = !_obscurePassword),
                       ),
                     ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
+                    validator: (v) {
+                      if (v == null || v.isEmpty) {
                         return 'Please enter your password';
                       }
                       return null;
                     },
                   ),
                 ),
-                SizedBox(height: 16),
-                // ✅ زر Forgot Password
+
+                const SizedBox(height: 16),
+
+                // Forgot Password
                 Align(
                   alignment: Alignment.centerRight,
                   child: GestureDetector(
-                    onTap: () =>
-                        Navigator.pushNamed(context, '/forgot-password'),
-                    child: Text(
-                      'Forgot Password?',
-                      style: TextStyle(
-                        color: Color(0xFF4A5FBC),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
+                    onTap: () => Navigator.pushNamed(context, '/forgot-password'),
+                    child: const Text('Forgot Password?',
+                        style: TextStyle(
+                            color: Color(0xFF4A5FBC),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14)),
                   ),
                 ),
-                SizedBox(height: 40),
+
+                const SizedBox(height: 40),
+
+                // Login Button
                 Container(
                   width: double.infinity,
                   height: 56,
                   decoration: BoxDecoration(
-                    color: Color(0xFF4A5FBC),
+                    color: const Color(0xFF4A5FBC),
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Color(0xFF4A5FBC).withOpacity(0.3),
+                        color: const Color(0xFF4A5FBC).withOpacity(.3),
                         blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
+                        offset: const Offset(0, 4),
+                      )
                     ],
                   ),
                   child: TextButton(
                     onPressed: _isLoading ? null : _handleLogin,
-                    style: TextButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
                     child: _isLoading
-                        ? SizedBox(
+                        ? const SizedBox(
                             width: 24,
                             height: 24,
                             child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
+                                color: Colors.white, strokeWidth: 2),
                           )
-                        : Text(
-                            'Log In',
+                        : const Text('Log In',
                             style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white)),
                   ),
                 ),
-                SizedBox(height: 20),
-                // ✅ لينك للذهاب إلى Signup
+
+                const SizedBox(height: 20),
+
+                // Go to Signup
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      'Don\'t have an account? ',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
+                    Text('Don\'t have an account? ',
+                        style: TextStyle(color: Colors.grey[600])),
                     GestureDetector(
                       onTap: () =>
                           Navigator.pushReplacementNamed(context, '/signup'),
-                      child: Text(
-                        'Sign Up',
-                        style: TextStyle(
-                          color: Color(0xFF4A5FBC),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: const Text('Sign Up',
+                          style: TextStyle(
+                              color: Color(0xFF4A5FBC),
+                              fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
-                SizedBox(height: 40),
+                const SizedBox(height: 40),
               ],
             ),
           ),

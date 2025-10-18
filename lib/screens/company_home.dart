@@ -3,14 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class CompanyHome extends StatefulWidget {
-  final String? companyId;              // uid تبع الشركة (يوصل من اللوق إن)
-  final String companyName;             // اسم افتراضي لو ما لاقينا شي من الداتابيس
-
   const CompanyHome({
     super.key,
-    this.companyId,
-    this.companyName = 'Company name',
+    this.companyId,            // يوصلك من صفحة اللوق إن
+    this.fallbackCompanyName = 'Company',
   });
+
+  /// uid الخاص بحساب الشركة (يوصل من اللوق إن)
+  final String? companyId;
+
+  /// اسم احتياطي لو ما وُجد شي في الداتابيس
+  final String fallbackCompanyName;
 
   @override
   State<CompanyHome> createState() => _CompanyHomeState();
@@ -19,6 +22,13 @@ class CompanyHome extends StatefulWidget {
 class _CompanyHomeState extends State<CompanyHome> {
   static const Color _brand = Color(0xFF4A5FBC);
   int _tab = 1; // 0: Reports, 1: Home
+
+  String get _effectiveCompanyId {
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final fromArgs = (args?['companyId'] ?? '').toString();
+    return fromArgs.isNotEmpty ? fromArgs : (widget.companyId ?? '');
+  }
 
   @override
   void initState() {
@@ -30,37 +40,34 @@ class _CompanyHomeState extends State<CompanyHome> {
     });
   }
 
-  // ---------------- Company name (dynamic from Firestore) ----------------
-  Stream<String> _companyNameStream() {
-    // لو ما فيه companyId نرجّع الاسم الافتراضي
-    if (widget.companyId == null || widget.companyId!.isEmpty) {
-      return Stream.value(widget.companyName);
-    }
+  /// اسم الشركة من Firestore (Users/{companyId})
+  Stream<String> _companyNameStream(String companyId) {
+    if (companyId.isEmpty) return Stream.value(widget.fallbackCompanyName);
 
     return FirebaseFirestore.instance
         .collection('Users')
-        .doc(widget.companyId)
+        .doc(companyId)
         .snapshots()
         .map((snap) {
-      final data = snap.data();
-      final name = (data?['CompanyName'] ?? data?['companyName'] ?? '')
+      final data = snap.data() ?? {};
+      final name = (data['CompanyName'] ?? data['companyName'] ?? '')
           .toString()
           .trim();
-      return name.isEmpty ? widget.companyName : name;
+      return name.isEmpty ? widget.fallbackCompanyName : name;
     });
   }
 
-  // ---------------- Jobs list stream ----------------
-  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _jobsStream() {
+  /// وظائف الشركة (Jobs). لو companyId فاضي، نعرض كل الوظائف (للتجربة).
+  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _jobsStream(
+      String companyId) {
     Query<Map<String, dynamic>> q =
         FirebaseFirestore.instance.collection('Jobs');
-
-    if (widget.companyId != null && widget.companyId!.isNotEmpty) {
-      q = q.where('UserID', isEqualTo: widget.companyId);
+    if (companyId.isNotEmpty) {
+      q = q.where('UserID', isEqualTo: companyId);
     }
-
     return q.snapshots().map((snap) {
       final docs = snap.docs.toList();
+      // ترتيب محلي حسب StartDate (الأحدث أولًا)
       docs.sort((a, b) {
         final sa = a.data()['StartDate'];
         final sb = b.data()['StartDate'];
@@ -74,12 +81,12 @@ class _CompanyHomeState extends State<CompanyHome> {
 
   @override
   Widget build(BuildContext context) {
+    final companyId = _effectiveCompanyId;
+
     final homeBody = ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // -------------- تم حذف سطر "Company name" بالكامل --------------
-
-        // زر Create يمين
+        // زر Create (يمين)
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
@@ -87,7 +94,8 @@ class _CompanyHomeState extends State<CompanyHome> {
               padding: const EdgeInsets.only(right: 20.0, top: 8),
               child: OutlinedButton(
                 onPressed: () {
-                  Navigator.pushNamed(context, '/job-posting'); // create mode
+                  // وضع إنشاء جديد
+                  Navigator.pushNamed(context, '/job-posting');
                 },
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: _brand),
@@ -117,7 +125,7 @@ class _CompanyHomeState extends State<CompanyHome> {
 
         // قائمة الوظائف
         StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
-          stream: _jobsStream(),
+          stream: _jobsStream(companyId),
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
               return const Padding(
@@ -150,8 +158,8 @@ class _CompanyHomeState extends State<CompanyHome> {
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
@@ -165,6 +173,7 @@ class _CompanyHomeState extends State<CompanyHome> {
                   ),
                   child: Row(
                     children: [
+                      // نصوص الوظيفة
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -181,19 +190,22 @@ class _CompanyHomeState extends State<CompanyHome> {
                               [position, specialty]
                                   .where((e) => e.isNotEmpty)
                                   .join(' • '),
-                              style:
-                                  const TextStyle(color: Colors.black54),
+                              style: const TextStyle(color: Colors.black54),
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(width: 10),
+
+                      // Edit => يفتح صفحة job_posting ببيانات الوظيفة للتحرير
                       OutlinedButton(
                         onPressed: () {
-                          final desc =
-                              data['JobDescription'] ?? data['Description'] ?? '';
-                          final req =
-                              data['Requirements'] ?? data['Requirments'] ?? [];
+                          final desc = data['JobDescription'] ??
+                              data['Description'] ??
+                              '';
+                          final req = data['Requirements'] ??
+                              data['Requirments'] ??
+                              [];
                           final start = data['StartDate'];
                           final end = data['EndDate'];
 
@@ -244,12 +256,11 @@ class _CompanyHomeState extends State<CompanyHome> {
         backgroundColor: _brand,
         elevation: 0,
         centerTitle: true,
-        // --------- العنوان صار ديناميكي من Firestore ---------
+        // العنوان ديناميكي: Welcome, {CompanyName}!
         title: StreamBuilder<String>(
-          stream: _companyNameStream(),
+          stream: _companyNameStream(companyId),
           builder: (context, snap) {
-            final name =
-                (snap.data ?? widget.companyName).toString().trim();
+            final name = (snap.data ?? widget.fallbackCompanyName).trim();
             return Text(
               'Welcome, $name!',
               style: const TextStyle(
@@ -294,8 +305,7 @@ class _CompanyHomeState extends State<CompanyHome> {
         destinations: const [
           NavigationDestination(
               icon: Icon(Icons.insert_chart_outlined), label: 'Reports'),
-          NavigationDestination(
-              icon: Icon(Icons.home_outlined), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
         ],
       ),
     );

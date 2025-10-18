@@ -1,13 +1,14 @@
-// lib/screens/jobseeker_home.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // صفحات البنات: الموديل + التفاصيل + قائمة الوظائف + UserProfile
 import 'package:gp_2025_11/screens/all_jobs.dart'
     show JobsPage, Job, JobDetailsPage, UserProfile;
 
 class JobSeekerHome extends StatefulWidget {
-  const JobSeekerHome({super.key});
+  const JobSeekerHome({super.key, this.userId});
+  final String? userId; // ممكن يجي من routes
 
   @override
   State<JobSeekerHome> createState() => _JobSeekerHomeState();
@@ -26,18 +27,20 @@ class _JobSeekerHomeState extends State<JobSeekerHome> {
     savedJobIds: {},
   );
 
-  final _majors = const [
-    'All',
-    'computer science',
-    'information systems',
-    'cybersecurity',
-    'data science',
-    'software engineering',
-    'business',
-    'marketing',
-  ];
-
   static const _brand = Color(0xFF4A5FBC);
+
+  /// نجيب الـ userId: args → currentUser → widget.userId
+  String get _effectiveUserId {
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final fromArgs = (args?['userId'] ?? '').toString();
+    if (fromArgs.isNotEmpty) return fromArgs;
+
+    final current = FirebaseAuth.instance.currentUser;
+    if (current != null && current.uid.isNotEmpty) return current.uid;
+
+    return widget.userId ?? '';
+  }
 
   @override
   void dispose() {
@@ -47,7 +50,7 @@ class _JobSeekerHomeState extends State<JobSeekerHome> {
 
   @override
   Widget build(BuildContext context) {
-    // إخفاء أي MaterialBanner (مثل "Upload your CV") بدون لمس كود البنات
+    // اخفاء أي MaterialBanner سابق
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
@@ -58,7 +61,6 @@ class _JobSeekerHomeState extends State<JobSeekerHome> {
       controller: _homeScroll,
       padding: const EdgeInsets.all(16),
       children: [
-        // العنوان الكبير (بنفس روح الليدر)
         Row(
           children: const [
             Icon(Icons.work_outline, size: 36, color: _brand),
@@ -77,7 +79,6 @@ class _JobSeekerHomeState extends State<JobSeekerHome> {
         ),
         const SizedBox(height: 16),
 
-        // أزرار Mock / CV
         Row(
           children: [
             Expanded(
@@ -106,22 +107,17 @@ class _JobSeekerHomeState extends State<JobSeekerHome> {
 
         const SizedBox(height: 24),
 
-        // عنوان Jobs + زر All
         Row(
           children: [
-            const Text(
-              'Jobs',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-            ),
+            const Text('Jobs',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
             const Spacer(),
             TextButton(
               onPressed: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                       JobsPage(profile: _profile),
-
+                    builder: (_) => JobsPage(profile: _profile),
                   ),
                 );
               },
@@ -131,25 +127,20 @@ class _JobSeekerHomeState extends State<JobSeekerHome> {
         ),
         const SizedBox(height: 8),
 
-        // معاينة أحدث وظيفتين
         const _JobsPreview(limit: 2),
 
         const SizedBox(height: 16),
       ],
     );
 
+    final userId = _effectiveUserId;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: _brand,
         elevation: 0,
-        title: const Text(
-          'Welcome, Job Seeker!',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        title: _WelcomeTitle(userId: userId), // ✅ اسم دينامك من Users/{uid}
         actions: [
           IconButton(
             tooltip: 'Notifications',
@@ -167,33 +158,25 @@ class _JobSeekerHomeState extends State<JobSeekerHome> {
           ),
         ],
       ),
-
-      // تبويبات فعلية مع الحفاظ على الحالة
       body: IndexedStack(
         index: _tab,
         children: [
           Center(
-            child: Text(
-              'Reports – قريبًا',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            child: Text('Reports – قريبًا',
+                style: Theme.of(context).textTheme.titleMedium),
           ),
           homeBody,
           const _WishlistPlaceholder(),
         ],
       ),
-
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) {
           if (i == _tab) {
-            // لو ضغطتِ Home وهو ظاهر: رجوع لأعلى
             if (i == 1) {
-              _homeScroll.animateTo(
-                0,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-              );
+              _homeScroll.animateTo(0,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut);
             }
             return;
           }
@@ -211,7 +194,55 @@ class _JobSeekerHomeState extends State<JobSeekerHome> {
   }
 }
 
-// كرت كبير (Mock / CV) بنفس روح الليدر
+class _WelcomeTitle extends StatelessWidget {
+  const _WelcomeTitle({required this.userId});
+  final String userId;
+
+  Stream<String> _displayNameStream() {
+    if (userId.isEmpty) return Stream.value('User');
+
+    return FirebaseFirestore.instance
+        .collection('Users')
+        .doc(userId)
+        .snapshots()
+        .map((snap) {
+      final data = snap.data() ?? {};
+      final first = (data['FirstName'] ?? data['firstName'] ?? '').toString();
+      final last = (data['LastName'] ?? data['lastName'] ?? '').toString();
+      final full = (data['FullName'] ?? data['fullName'] ?? '').toString();
+
+      final name = (full.isNotEmpty
+              ? full
+              : [first, last].where((s) => s.trim().isNotEmpty).join(' '))
+          .trim();
+
+      if (name.isNotEmpty) return name;
+
+      final email = (data['Email'] ?? data['email'] ?? '').toString();
+      if (email.contains('@')) return email.split('@').first;
+
+      return 'User';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<String>(
+      stream: _displayNameStream(),
+      builder: (context, snap) {
+        final name = (snap.data ?? 'User').trim();
+        return Text(
+          'Welcome, $name!',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _BigTile extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -243,10 +274,7 @@ class _BigTile extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 label,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(color: color, fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -256,7 +284,6 @@ class _BigTile extends StatelessWidget {
   }
 }
 
-// معاينة سريعة للوظائف (من Firestore) وتفتح تفاصيل البنات
 class _JobsPreview extends StatelessWidget {
   final int limit;
   const _JobsPreview({this.limit = 2});
@@ -265,7 +292,7 @@ class _JobsPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
-          .collection('Jobs') // تأكدي من J كبيرة مطابقة للقواعد
+          .collection('Jobs')
           .orderBy('StartDate', descending: true)
           .limit(limit)
           .snapshots(),
@@ -289,10 +316,8 @@ class _JobsPreview extends StatelessWidget {
         if (docs.isEmpty) {
           return Padding(
             padding: const EdgeInsets.all(16),
-            child: Text(
-              'No jobs yet',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            child: Text('No jobs yet',
+                style: Theme.of(context).textTheme.bodyMedium),
           );
         }
 
@@ -319,10 +344,8 @@ class _JobsPreview extends StatelessWidget {
               child: ListTile(
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                title: Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
+                title: Text(title,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Text(
                   [position, specialty].where((e) => e.isNotEmpty).join(' • '),
                 ),
@@ -345,17 +368,14 @@ class _JobsPreview extends StatelessWidget {
   }
 }
 
-// Wishlist Placeholder (بناءً على طلبك)
 class _WishlistPlaceholder extends StatelessWidget {
   const _WishlistPlaceholder();
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Text(
-        'Wishlist – قريبًا',
-        style: Theme.of(context).textTheme.titleMedium,
-      ),
+      child: Text('Wishlist – قريبًا',
+          style: Theme.of(context).textTheme.titleMedium),
     );
   }
 }
